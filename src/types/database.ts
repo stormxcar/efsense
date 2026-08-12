@@ -330,6 +330,10 @@ export interface Database {
       subscribe_newsletter: { Args: { p_email: string }; Returns: string }
       record_user_activity: { Args: { p_user_id: string; p_event_type: string; p_target_type?: string | null; p_target_id?: string | null; p_metadata?: Json }; Returns: string }
       recommended_posts: { Args: { p_user_id?: string | null; p_limit?: number }; Returns: RecommendedPostRow[] }
+      admin_dashboard_summary: { Args: { p_days?: number }; Returns: Json }
+      admin_dashboard_timeseries: { Args: { p_days?: number }; Returns: { day: string; dau: number; reads: number; reels: number; approved: number }[] }
+      find_orphan_media_assets: { Args: { p_limit?: number }; Returns: { id: string; public_id: string; secure_url: string; resource_type: string; folder: string | null; owner_id: string | null; created_at: string; last_seen_at: string }[] }
+      cleanup_orphan_media_assets: { Args: { p_ids: string[] }; Returns: number }
     }
     Enums: Record<string, never>
   }

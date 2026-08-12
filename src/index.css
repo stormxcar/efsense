@@ -890,6 +890,9 @@
   .community-post-menu-panel button { display: flex; align-items: center; gap: .5rem; width: 100%; padding: .55rem .6rem; color: var(--text-secondary); font-size: .75rem; text-align: left; }
   .community-post-menu-panel button:hover { background: var(--bg-hover); color: var(--text-primary); }
   .community-report-form { display: grid; gap: .6rem; margin-top: .8rem; padding: .8rem; border: 1px solid var(--border-color); background: var(--bg-secondary); }
+  .btn-danger { display: inline-flex; align-items: center; justify-content: center; gap: .4rem; min-height: 2.5rem; padding: .55rem .9rem; border: 1px solid rgba(248,113,113,.45); border-radius: .65rem; background: rgba(248,113,113,.14); color: #fca5a5; font-weight: 700; transition: background .2s ease, transform .2s ease; }
+  .btn-danger:hover { background: rgba(248,113,113,.24); transform: translateY(-1px); }
+  .btn-danger:disabled { opacity: .55; transform: none; }
   .community-comments { margin-top: 1rem; padding-top: .9rem; border-top: 1px solid var(--border-color); }
   .community-comment { display: flex; align-items: flex-start; gap: .55rem; margin-bottom: .8rem; }
   .community-comment .community-avatar { width: 2rem; height: 2rem; }

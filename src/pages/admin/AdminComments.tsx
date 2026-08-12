@@ -6,6 +6,7 @@ import { hideComment, deleteComment } from '@/services/api'
 import { EyeOff, Trash2, Eye } from 'lucide-react'
 import { formatRelativeDate, getInitials } from '@/utils'
 import toast from 'react-hot-toast'
+import ConfirmModal from '@/components/ConfirmModal'
 
 type AdminComment = {
   id: string
@@ -20,6 +21,7 @@ export default function AdminComments() {
   const qc = useQueryClient()
   const [page, setPage] = useState(1)
   const [filter, setFilter] = useState<'all' | 'visible' | 'hidden'>('all')
+  const [confirmCommentId, setConfirmCommentId] = useState<string | null>(null)
   const filterLabels = { all: 'Tất cả', visible: 'Đang hiển thị', hidden: 'Đã ẩn' }
   const PAGE_SIZE = 20
 
@@ -111,7 +113,7 @@ export default function AdminComments() {
                     <Eye size={14} style={{ color: '#4ade80' }} />
                   </button>
                 )}
-                <button onClick={() => { if (confirm('Bạn có chắc muốn xóa bình luận này?')) deleteMutation.mutate(c.id) }}
+                <button onClick={() => setConfirmCommentId(c.id)}
                   className="btn-ghost p-2" style={{ color: '#f87171' }}>
                   <Trash2 size={14} />
                 </button>
@@ -130,6 +132,7 @@ export default function AdminComments() {
             className="btn-secondary text-sm px-4 py-2 disabled:opacity-40">Trang sau</button>
         </div>
       )}
+      <ConfirmModal open={Boolean(confirmCommentId)} title="Xóa bình luận?" message="Bình luận sẽ bị xóa khỏi cuộc thảo luận và không thể khôi phục từ giao diện này." confirmLabel="Xóa bình luận" loading={deleteMutation.isPending} onCancel={() => setConfirmCommentId(null)} onConfirm={() => { if (confirmCommentId) deleteMutation.mutate(confirmCommentId, { onSettled: () => setConfirmCommentId(null) }) }} />
     </div>
   )
 }

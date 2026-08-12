@@ -8,6 +8,7 @@ import { formatDate, formatNumber } from '@/utils'
 import Tooltip from '@/components/Tooltip'
 import toast from 'react-hot-toast'
 import type { PostRow } from '@/types/database'
+import ConfirmModal from '@/components/ConfirmModal'
 
 const PAGE_SIZE = 15
 
@@ -17,6 +18,7 @@ export default function AdminPosts() {
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<string[]>([])
   const [filter, setFilter] = useState<'all' | 'published' | 'scheduled' | 'draft'>('all')
+  const [confirmPostId, setConfirmPostId] = useState<string | null>(null)
   const filterLabels = { all: 'Tất cả', published: 'Đã xuất bản', scheduled: 'Đã lên lịch', draft: 'Bản nháp' }
   const statusLabels = { published: 'Đã xuất bản', scheduled: 'Đã lên lịch', draft: 'Bản nháp' }
 
@@ -136,7 +138,7 @@ export default function AdminPosts() {
                       </Tooltip>
                       <Tooltip content="Xem phiên bản cũ" placement="top"><Link to={`/admin/posts/${post.id}/revisions`} className="btn-ghost px-2 py-1 text-xs"><span className="sr-only">Phiên bản</span>↺</Link></Tooltip>
                       <Tooltip content="Xóa bài viết" placement="top">
-                        <button onClick={() => { if (confirm('Bạn có chắc muốn xóa bài viết này?')) deleteMutation.mutate(post.id) }}
+                        <button onClick={() => setConfirmPostId(post.id)}
                           className="btn-ghost px-2 py-1 text-xs" style={{ color: '#f87171' }}>
                           <Trash2 size={13} />
                         </button>
@@ -159,6 +161,7 @@ export default function AdminPosts() {
             className="btn-secondary text-sm px-4 py-2 disabled:opacity-40">Trang sau</button>
         </div>
       )}
+      <ConfirmModal open={Boolean(confirmPostId)} title="Xóa bài viết?" message="Bài viết sẽ bị xóa khỏi hệ thống cùng các liên kết liên quan. Thao tác này không thể hoàn tác." confirmLabel="Xóa bài viết" loading={deleteMutation.isPending} onCancel={() => setConfirmPostId(null)} onConfirm={() => { if (confirmPostId) deleteMutation.mutate(confirmPostId, { onSettled: () => setConfirmPostId(null) }) }} />
     </div>
   )
 }

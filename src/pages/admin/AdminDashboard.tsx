@@ -6,6 +6,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { format, subDays } from 'date-fns'
 import { vi } from 'date-fns/locale'
 import TooltipComp from '@/components/Tooltip'
+import { fetchAdminDashboardMetrics } from '@/services/api'
 
 type SeriesDistribution = { name: string; posts?: Array<{ id: string }> }
 type RecentPost = { id: string; title: string; status: string; view_count: number; author?: { username?: string }; series?: { name?: string } }
@@ -37,6 +38,12 @@ export default function AdminDashboard() {
         approvalRate: communityTotal.count ? Math.round(((communityTotal.count - (communityPending.count ?? 0)) / communityTotal.count) * 100) : 100,
       }
     },
+  })
+
+  const { data: advancedMetrics } = useQuery({
+    queryKey: ['admin-advanced-metrics', 30],
+    queryFn: () => fetchAdminDashboardMetrics(30),
+    staleTime: 1000 * 60 * 5,
   })
 
   const { data: recentPosts = [] } = useQuery({
@@ -92,14 +99,17 @@ export default function AdminDashboard() {
   })
 
   const statCards = [
+    { label: 'DAU 30 ngày', value: advancedMetrics?.summary.dau ?? 0, Icon: Users, color: '#22c55e', href: '/admin/users' },
+    { label: 'Lượt đọc 30 ngày', value: advancedMetrics?.summary.reads ?? 0, Icon: Eye, color: '#38bdf8', href: '/admin/posts' },
+    { label: 'Retention 7 ngày', value: `${advancedMetrics?.summary.retention_7d ?? 0}%`, Icon: TrendingUp, color: '#f59e0b', href: '/admin' },
     { label: 'Tổng bài viết', value: stats?.posts ?? 0, Icon: FileText, color: '#3b82f6', href: '/admin/posts' },
     { label: 'Tổng người dùng', value: stats?.users ?? 0, Icon: Users, color: '#8b5cf6', href: '/admin/users' },
     { label: 'Bình luận', value: stats?.comments ?? 0, Icon: MessageSquare, color: '#10b981', href: '/admin/comments' },
     { label: 'Lượt thích', value: stats?.likes ?? 0, Icon: Heart, color: '#ef476f', href: '/admin/posts' },
     { label: 'Lượt chia sẻ', value: stats?.shares ?? 0, Icon: Share2, color: '#06b6d4', href: '/admin/posts' },
     { label: 'Báo cáo chờ xử lý', value: stats?.pendingReports ?? 0, Icon: Flag, color: '#f97316', href: '/admin/reports' },
-    { label: 'Reels cộng đồng', value: stats?.reels ?? 0, Icon: BarChart2, color: '#ec4899', href: '/admin/moderation' },
-    { label: 'Tỷ lệ duyệt', value: `${stats?.approvalRate ?? 0}%`, Icon: TrendingUp, color: '#84cc16', href: '/admin/moderation' },
+    { label: 'Reels 30 ngày', value: advancedMetrics?.summary.reels ?? 0, Icon: BarChart2, color: '#ec4899', href: '/admin/moderation' },
+    { label: 'Tỷ lệ duyệt', value: `${advancedMetrics?.summary.approval_rate ?? stats?.approvalRate ?? 0}%`, Icon: TrendingUp, color: '#84cc16', href: '/admin/moderation' },
   ]
 
   return (
@@ -181,6 +191,10 @@ export default function AdminDashboard() {
               </BarChart>
             </ResponsiveContainer>
           </div>
+        </div>
+        <div className="card p-6">
+          <h2 className="font-bold mb-6 flex items-center gap-2"><Users size={18} className="text-green-400" /> DAU, lượt đọc và Reels</h2>
+          <div className="h-64"><ResponsiveContainer width="100%" height="100%"><LineChart data={advancedMetrics?.timeseries ?? []}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} /><XAxis dataKey="day" stroke="var(--text-muted)" fontSize={10} tickLine={false} axisLine={false} tickFormatter={value => format(new Date(value), 'dd/MM')} /><YAxis stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} /><Tooltip contentStyle={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)', borderRadius: '12px' }} /><Line type="monotone" dataKey="dau" name="DAU" stroke="#22c55e" strokeWidth={2} dot={false} /><Line type="monotone" dataKey="reads" name="Lượt đọc" stroke="#38bdf8" strokeWidth={2} dot={false} /><Line type="monotone" dataKey="reels" name="Reels" stroke="#ec4899" strokeWidth={2} dot={false} /></LineChart></ResponsiveContainer></div>
         </div>
       </div>
 

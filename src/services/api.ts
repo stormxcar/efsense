@@ -118,6 +118,22 @@ export async function fetchRecommendedPosts(userId: string, limit = 12) {
   return { data: (data ?? []) as RecommendedPostRow[], error }
 }
 
+export async function fetchAdminDashboardMetrics(days = 30) {
+  const [summary, timeseries] = await Promise.all([
+    supabase.rpc('admin_dashboard_summary', { p_days: days }),
+    supabase.rpc('admin_dashboard_timeseries', { p_days: days }),
+  ])
+  return { summary: (summary.data ?? {}) as { dau?: number; reads?: number; reels?: number; approval_rate?: number; retention_7d?: number }, timeseries: timeseries.data ?? [], error: summary.error ?? timeseries.error }
+}
+
+export async function fetchOrphanMediaAssets(limit = 200) {
+  return supabase.rpc('find_orphan_media_assets', { p_limit: limit })
+}
+
+export async function cleanupOrphanMediaAssets(ids: string[]) {
+  return supabase.rpc('cleanup_orphan_media_assets', { p_ids: ids })
+}
+
 export async function fetchPostBySlug(slug: string, incrementView = true) {
   const { data, error } = await supabase
     .from('posts')
@@ -234,8 +250,16 @@ export async function updatePostsBulk(ids: string[], status: 'draft' | 'publishe
   return supabase.from('posts').update({ status, published_at: status === 'published' ? new Date().toISOString() : null }).in('id', ids)
 }
 
+export async function reschedulePost(id: string, scheduledAt: string) {
+  return supabase.from('posts').update({ status: 'scheduled', scheduled_at: scheduledAt, published_at: null }).eq('id', id).select('id,status,scheduled_at').single()
+}
+
 export async function fetchPostRevisions(postId: string) {
   return supabase.from('post_revisions').select('*').eq('post_id', postId).order('version', { ascending: false })
+}
+
+export async function fetchPostSnapshot(postId: string) {
+  return supabase.from('posts').select('id,title,slug,excerpt,content,cover_image,status').eq('id', postId).single()
 }
 
 export async function restorePostRevision(revision: { post_id: string; title: string; slug: string; excerpt: string | null; content: string | null; cover_image: string | null; status: string }) {

@@ -13,6 +13,7 @@ import { formatRelativeDate, getInitials } from '@/utils'
 import type { CommentWithUser } from '@/types/database'
 import toast from 'react-hot-toast'
 import { useProcessing } from '@/hooks/useProcessing'
+import ConfirmModal from '@/components/ConfirmModal'
 
 interface Props {
   postId: string
@@ -26,6 +27,7 @@ export default function CommentSection({ postId, currentUser }: Props) {
   const [image, setImage] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const process = useProcessing()
@@ -78,7 +80,6 @@ export default function CommentSection({ postId, currentUser }: Props) {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Bạn có chắc muốn xóa bình luận này?')) return
     await deleteComment(id)
     qc.invalidateQueries({ queryKey: ['comments', postId] })
     toast.success('Đã xóa bình luận')
@@ -200,12 +201,13 @@ export default function CommentSection({ postId, currentUser }: Props) {
                 setReplyTo({ id, username })
                 textareaRef.current?.focus()
               }}
-              onDelete={handleDelete}
+              onDelete={id => setConfirmDeleteId(id)}
               onHide={handleHide}
             />
           ))}
         </div>
       )}
+      <ConfirmModal open={Boolean(confirmDeleteId)} title="Xóa bình luận?" message="Bình luận sẽ bị xóa khỏi cuộc thảo luận và không thể khôi phục." confirmLabel="Xóa bình luận" onCancel={() => setConfirmDeleteId(null)} onConfirm={() => { if (confirmDeleteId) void handleDelete(confirmDeleteId).finally(() => setConfirmDeleteId(null)) }} />
     </section>
   )
 }

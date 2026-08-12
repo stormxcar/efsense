@@ -9,6 +9,7 @@ import toast from 'react-hot-toast'
 import { useAuth } from '@/hooks/useAuth'
 import { requiredText, validateAdminEmail, validatePassword } from '@/utils/validation'
 import type { UserRow } from '@/types/database'
+import ConfirmModal from '@/components/ConfirmModal'
 
 export default function AdminUsers() {
   const { user: currentUser } = useAuth()
@@ -17,6 +18,7 @@ export default function AdminUsers() {
   const [search, setSearch] = useState('')
   const [showNewUser, setShowNewUser] = useState(false)
   const [newUserForm, setNewUserForm] = useState({ email: '', password: '', username: '', role: 'user' as UserRow['role'] })
+  const [confirmUserId, setConfirmUserId] = useState<string | null>(null)
   const PAGE_SIZE = 15
 
   const { data, isLoading } = useQuery({
@@ -201,7 +203,7 @@ export default function AdminUsers() {
                       )}
                       <Tooltip content="Thu hồi toàn bộ phiên đăng nhập" placement="top"><button onClick={() => securityMutation.mutate({ id: u.id, action: 'revoke_sessions' })} disabled={securityMutation.isPending} className="btn-ghost px-2 py-1 text-xs" style={{ color: '#f59e0b' }}><LogOut size={13} /></button></Tooltip>
                       <Tooltip content="Xóa người dùng vĩnh viễn" placement="top">
-                        <button onClick={() => { if (confirm('Bạn có chắc muốn xóa người dùng này?')) deleteMutation.mutate(u.id) }} disabled={deleteMutation.isPending}
+                        <button onClick={() => setConfirmUserId(u.id)} disabled={deleteMutation.isPending}
                           className="btn-ghost px-2 py-1 text-xs disabled:opacity-50" style={{ color: '#f87171' }}>
                           <Trash2 size={13} />
                         </button>
@@ -224,6 +226,7 @@ export default function AdminUsers() {
             className="btn-secondary text-sm px-4 py-2 disabled:opacity-40">Trang sau</button>
         </div>
       )}
+      <ConfirmModal open={Boolean(confirmUserId)} title="Xóa người dùng?" message="Tài khoản và dữ liệu liên quan sẽ bị xóa vĩnh viễn. Hãy chắc chắn bạn đã kiểm tra nhật ký quản trị trước khi tiếp tục." confirmLabel="Xóa người dùng" loading={deleteMutation.isPending} onCancel={() => setConfirmUserId(null)} onConfirm={() => { if (confirmUserId) deleteMutation.mutate(confirmUserId, { onSettled: () => setConfirmUserId(null) }) }} />
     </div>
   )
 }

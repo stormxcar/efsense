@@ -9,6 +9,7 @@ import type { SeriesRow } from '@/types/database'
 import toast from 'react-hot-toast'
 import CloudinaryImageField from '@/components/CloudinaryImageField'
 import { optionalHttpUrl, requiredText } from '@/utils/validation'
+import ConfirmModal from '@/components/ConfirmModal'
 
 const DEFAULT_FORM = { name: '', slug: '', description: '', thumbnail: '', status: 'draft' as 'draft' | 'published' }
 
@@ -26,6 +27,7 @@ export default function AdminSeries() {
   const [editing, setEditing] = useState<string | null>(null)
   const [showNew, setShowNew] = useState(false)
   const [form, setForm] = useState(DEFAULT_FORM)
+  const [confirmSeriesId, setConfirmSeriesId] = useState<string | null>(null)
 
   const { data: series = [], isLoading } = useQuery({
     queryKey: ['admin-series'],
@@ -162,7 +164,7 @@ export default function AdminSeries() {
                 </div>
                 <div className="flex gap-1">
                   <button onClick={() => startEdit(s)} disabled={deleteMutation.isPending || updateMutation.isPending} className="btn-ghost p-2 disabled:opacity-50"><Edit2 size={14} /></button>
-                  <button onClick={() => { if (confirm('Xóa chuyên đề và gỡ liên kết khỏi toàn bộ bài viết?')) deleteMutation.mutate(s.id) }}
+                  <button onClick={() => setConfirmSeriesId(s.id)}
                     disabled={deleteMutation.isPending || updateMutation.isPending}
                     className="btn-ghost p-2 disabled:opacity-50" style={{ color: '#f87171' }}>
                     <Trash2 size={14} />
@@ -173,6 +175,7 @@ export default function AdminSeries() {
           </div>
         ))}
       </div>
+      <ConfirmModal open={Boolean(confirmSeriesId)} title="Xóa chuyên đề?" message="Chuyên đề sẽ bị xóa và các bài viết sẽ được gỡ liên kết khỏi chuyên đề này." confirmLabel="Xóa chuyên đề" loading={deleteMutation.isPending} onCancel={() => setConfirmSeriesId(null)} onConfirm={() => { if (confirmSeriesId) deleteMutation.mutate(confirmSeriesId, { onSettled: () => setConfirmSeriesId(null) }) }} />
     </div>
   )
 }
