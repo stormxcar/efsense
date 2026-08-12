@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { hideComment, deleteComment } from '@/services/api'
@@ -94,10 +95,10 @@ export default function AdminComments() {
                 </div>
                 <p className="text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>{c.content}</p>
                 {c.post && (
-                  <a href={`/posts/${c.post.slug}`} target="_blank"
+                  <Link to={`/posts/${c.post.slug}`}
                     className="text-xs hover:underline" style={{ color: '#60a5fa' }}>
                     Trong bài: {c.post.title}
-                  </a>
+                  </Link>
                 )}
               </div>
               <div className="flex gap-1 shrink-0">

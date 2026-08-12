@@ -7,7 +7,7 @@ import PostCard from '@/components/PostCard'
 import { Camera, Bookmark, Rss, Edit2, Save, X, Heart } from 'lucide-react'
 import { getInitials, formatDate } from '@/utils'
 import toast from 'react-hot-toast'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useProcessing } from '@/hooks/useProcessing'
 import type { PostWithDetails, SeriesRow } from '@/types/database'
@@ -244,14 +244,14 @@ export default function ProfilePage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {(followed as unknown as Array<SeriesRow | null>).map(series => series && (
-              <a key={series.id} href={`/series/${series.slug}`}
+              <Link key={series.id} to={`/series/${series.slug}`}
                 className="card p-5 flex items-center gap-4 hover:border-blue-500/30">
                 <span className="text-3xl">{({ 'tactical-analysis': '🎯', 'football-legends': '⭐', 'club-history': '🏛️', 'world-cup-stories': '🏆' } as Record<string, string>)[series.slug] ?? '📰'}</span>
                 <div>
                   <p className="font-semibold">{series.name}</p>
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{series.description}</p>
                 </div>
-              </a>
+              </Link>
             ))}
           </div>
         )

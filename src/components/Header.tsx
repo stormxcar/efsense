@@ -77,7 +77,7 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-50"
       style={{ background: 'var(--nav-bg)', backdropFilter: 'blur(18px)', borderBottom: '1px solid var(--border-color)' }}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
         <div className="flex items-center justify-between h-[68px]">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-3 shrink-0" aria-label="Trang chủ Football Stories">
@@ -117,7 +117,7 @@ export default function Header() {
           <div className="flex items-center gap-1.5">
             {/* Search */}
             {searchOpen ? (
-              <form onSubmit={handleSearch} className="flex items-center gap-2 animate-fade-in-up">
+              <form onSubmit={handleSearch} className="header-search-form flex items-center gap-2 animate-fade-in-up">
                 <input
                   ref={searchRef}
                   value={searchQuery}
@@ -269,6 +269,12 @@ export default function Header() {
               <Link to="/lich-su" className="nav-link pl-6 text-sm" onClick={() => setSidebarOpen(false)}>Dòng thời gian bóng đá</Link>
               {seriesLinks.map(item => <Link key={item.href} to={item.href} className="nav-link pl-6 text-sm" onClick={() => setSidebarOpen(false)}>{item.label}</Link>)}
             </div>
+            {!user && (
+              <div className="mt-2 pt-2 border-t flex flex-col gap-1" style={{ borderColor: 'var(--border-color)' }}>
+                <Link to="/login" className="nav-link" onClick={() => setSidebarOpen(false)}>Đăng nhập</Link>
+                <Link to="/register" className="nav-link" onClick={() => setSidebarOpen(false)}>Đăng ký</Link>
+              </div>
+            )}
           </nav>
         </div>
       )}

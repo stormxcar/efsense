@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Send, ImageIcon, X, Reply, Trash2, EyeOff, AlertCircle } from 'lucide-react'
 import {
@@ -165,7 +166,7 @@ export default function CommentSection({ postId, currentUser }: Props) {
       ) : (
         <div className="card p-5 mb-8 text-center" style={{ color: 'var(--text-secondary)' }}>
           <AlertCircle size={24} className="mx-auto mb-2 opacity-50" />
-          <p className="text-sm">Vui lòng <a href="/login" className="text-blue-400 hover:underline">đăng nhập</a> để bình luận.</p>
+          <p className="text-sm">Vui lòng <Link to="/login" className="text-blue-400 hover:underline">đăng nhập</Link> để bình luận.</p>
         </div>
       )}
 

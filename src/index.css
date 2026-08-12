@@ -519,6 +519,29 @@
     border-top: 1px solid var(--accent);
     background: var(--bg-secondary);
   }
+
+  .header-search-form {
+    min-width: 0;
+  }
+
+  @media (max-width: 639px) {
+    .header-search-form {
+      position: absolute;
+      top: calc(100% + 1px);
+      left: 0;
+      right: 0;
+      z-index: 60;
+      padding: .7rem 1rem;
+      background: var(--nav-bg);
+      border-bottom: 1px solid var(--border-color);
+      box-shadow: 0 16px 28px rgba(0, 0, 0, .18);
+    }
+
+    .header-search-form .input {
+      width: 100%;
+      min-width: 0;
+    }
+  }
   .newsletter-form { max-width: 30rem; margin-top: 1.5rem; }
   .newsletter-form > label {
     display: flex;
