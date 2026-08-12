@@ -99,7 +99,7 @@ export default function SearchPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 md:py-14">
-      <Reveal>
+      <Reveal className="search-page-header">
         <header className="max-w-3xl mb-10">
           <p className="text-xs font-extrabold uppercase tracking-[.16em] mb-3" style={{ color: 'var(--accent)' }}>Kho lưu trữ</p>
           <h1 className="text-5xl md:text-7xl font-black uppercase tracking-[-.035em] leading-[.88] mb-6" style={{ fontFamily: 'var(--font-family-display)' }}>

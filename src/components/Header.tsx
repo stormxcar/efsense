@@ -1,5 +1,5 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import {
   Search, Bell, Menu, X, LogOut, User, Settings,
   BookmarkIcon, ChevronDown, Sun, Moon
@@ -13,6 +13,9 @@ import NotificationDropdown from './NotificationDropdown'
 import Tooltip from './Tooltip'
 import toast from 'react-hot-toast'
 import { useProcessing } from '@/hooks/useProcessing'
+import { getSearchHistory, saveSearchHistory } from '@/utils/history'
+
+const HEADER_SEARCH_SUGGESTIONS = ['Chiến thuật', 'Bóng đá Việt Nam', 'World Cup', 'Premier League', 'eFootball']
 
 export default function Header() {
   const { user, isAdmin } = useAuth()
@@ -28,7 +31,16 @@ export default function Header() {
   const [notifOpen, setNotifOpen] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
   const notifRef = useRef<HTMLDivElement>(null)
+  const searchFormRef = useRef<HTMLFormElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+
+  const headerSearchHistory = useMemo(() => searchOpen ? getSearchHistory() : [], [searchOpen])
+  const headerSuggestions = useMemo(() => {
+    const term = searchQuery.trim().toLocaleLowerCase('vi')
+    return [...new Set([...headerSearchHistory, ...HEADER_SEARCH_SUGGESTIONS])]
+      .filter(item => !term || item.toLocaleLowerCase('vi').includes(term))
+      .slice(0, 5)
+  }, [headerSearchHistory, searchQuery])
 
   useEffect(() => {
     if (searchOpen) searchRef.current?.focus()
@@ -38,6 +50,7 @@ export default function Header() {
     function handle(e: MouseEvent) {
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) setUserMenuOpen(false)
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false)
+      if (searchFormRef.current && !searchFormRef.current.contains(e.target as Node)) setSearchOpen(false)
     }
     document.addEventListener('mousedown', handle)
     return () => document.removeEventListener('mousedown', handle)
@@ -46,10 +59,18 @@ export default function Header() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     if (searchQuery.trim()) {
+      saveSearchHistory(searchQuery)
       navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`)
       setSearchOpen(false)
       setSearchQuery('')
     }
+  }
+
+  const selectHeaderSuggestion = (term: string) => {
+    saveSearchHistory(term)
+    navigate(`/search?q=${encodeURIComponent(term)}`)
+    setSearchOpen(false)
+    setSearchQuery('')
   }
 
   const handleSignOut = async () => {
@@ -117,16 +138,29 @@ export default function Header() {
           <div className="flex items-center gap-1.5">
             {/* Search */}
             {searchOpen ? (
-              <form onSubmit={handleSearch} className="header-search-form flex items-center gap-2 animate-fade-in-up">
-                <input
-                  ref={searchRef}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Tìm bài viết..."
-                  aria-label="Tìm bài viết"
-                  className="input w-48 h-9 text-sm"
-                  style={{ padding: '0.4rem 0.75rem' }}
-                />
+              <form ref={searchFormRef} onSubmit={handleSearch} className="header-search-form flex items-center gap-2 animate-fade-in-up">
+                <div className="header-search-field">
+                  <input
+                    ref={searchRef}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Escape') setSearchOpen(false) }}
+                    placeholder="Tìm bài viết..."
+                    aria-label="Tìm bài viết"
+                    className="input w-48 h-9 text-sm"
+                    style={{ padding: '0.4rem 0.75rem' }}
+                  />
+                  {headerSuggestions.length > 0 && (
+                    <div className="header-search-suggestions" role="listbox" aria-label="Gợi ý tìm kiếm nhanh">
+                      <p className="search-suggestions-label">{searchQuery.trim() ? 'Gợi ý phù hợp' : 'Tìm nhanh'}</p>
+                      {headerSuggestions.map(term => (
+                        <button key={term} type="button" role="option" className="search-suggestion-row" onMouseDown={e => e.preventDefault()} onClick={() => selectHeaderSuggestion(term)}>
+                          <Search size={14} /> <span>{term}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <Tooltip content="Đóng tìm kiếm" placement="bottom">
                   <button type="button" onClick={() => setSearchOpen(false)} className="btn-ghost p-2" aria-label="Đóng tìm kiếm">
                     <X size={16} />

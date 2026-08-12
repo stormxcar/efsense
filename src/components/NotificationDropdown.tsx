@@ -49,7 +49,7 @@ export default function NotificationDropdown({ userId, onClose }: Props) {
 
   return (
     <div
-      className="absolute right-0 top-full mt-2 w-80 card animate-fade-in-up"
+      className="notification-dropdown absolute right-0 top-full mt-2 w-80 card animate-fade-in-up"
       style={{ zIndex: 100, maxHeight: '420px', display: 'flex', flexDirection: 'column' }}
     >
       <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
