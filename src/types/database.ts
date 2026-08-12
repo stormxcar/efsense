@@ -92,12 +92,37 @@ export interface CommentRow {
 export interface NotificationRow {
   id: string
   user_id: string
+  actor_id: string | null
   type: string
   title: string
   body: string | null
   link: string | null
+  metadata: Json
   is_read: boolean
   created_at: string
+}
+
+export interface UserActivityEventRow {
+  id: string
+  user_id: string
+  event_type: string
+  target_type: string | null
+  target_id: string | null
+  metadata: Json
+  created_at: string
+}
+
+export interface RecommendedPostRow {
+  post_id: string
+  title: string
+  slug: string
+  excerpt: string | null
+  cover_image: string | null
+  series_id: string | null
+  series_name: string | null
+  series_slug: string | null
+  published_at: string
+  score: number
 }
 
 export interface PostShareRow {
@@ -246,6 +271,11 @@ export interface Database {
         Insert: Partial<NotificationRow>
         Update: Partial<NotificationRow>
       }
+      user_activity_events: {
+        Row: UserActivityEventRow
+        Insert: Partial<UserActivityEventRow>
+        Update: Partial<UserActivityEventRow>
+      }
       reports: {
         Row: ReportRow
         Insert: Partial<ReportRow>
@@ -298,6 +328,8 @@ export interface Database {
       record_post_view: { Args: { p_post_id: string; p_visitor_key: string }; Returns: number }
       weekly_popular_posts: { Args: { p_limit?: number }; Returns: { post_id: string; weekly_views: number }[] }
       subscribe_newsletter: { Args: { p_email: string }; Returns: string }
+      record_user_activity: { Args: { p_user_id: string; p_event_type: string; p_target_type?: string | null; p_target_id?: string | null; p_metadata?: Json }; Returns: string }
+      recommended_posts: { Args: { p_user_id?: string | null; p_limit?: number }; Returns: RecommendedPostRow[] }
     }
     Enums: Record<string, never>
   }

@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { TrendingUp, BookOpen, ArrowRight, ArrowLeft, Clock, Eye, Hash, Play, Users, Swords } from 'lucide-react'
-import { fetchPosts, fetchSeries, fetchTags } from '@/services/api'
+import { TrendingUp, BookOpen, ArrowRight, ArrowLeft, Clock, Eye, Hash, Play, Users, Swords, Sparkles } from 'lucide-react'
+import { fetchPosts, fetchRecommendedPosts, fetchSeries, fetchTags } from '@/services/api'
 import PostCard, { PostCardSkeleton } from '@/components/PostCard'
 import { formatNumber, SERIES_ICONS } from '@/utils'
 import type { PostWithDetails, SeriesRow, TagRow } from '@/types/database'
@@ -10,8 +10,10 @@ import Reveal from '@/components/Reveal'
 import NewsTicker from '@/components/NewsTicker'
 import HeroTypewriter from '@/components/HeroTypewriter'
 import Magnetic from '@/components/Magnetic'
+import { useAuth } from '@/hooks/useAuth'
 
 export default function HomePage() {
+  const { user } = useAuth()
   const [page, setPage] = useState(1)
   const { data: featuredPosts = [], isLoading: loadingFeatured } = useQuery({
     queryKey: ['posts', 'featured'],
@@ -36,6 +38,40 @@ export default function HomePage() {
     queryKey: ['posts', 'popular'],
     queryFn: () => fetchPosts({ limit: 5 }).then(r => ((r.data ?? []) as unknown as PostWithDetails[]).sort((a, b) => b.view_count - a.view_count)),
   })
+  const { data: recommended = [], isLoading: loadingRecommended } = useQuery({
+    queryKey: ['recommended-posts', user?.id],
+    queryFn: () => fetchRecommendedPosts(user!.id, 6).then(result => result.data),
+    enabled: Boolean(user?.id),
+    staleTime: 1000 * 60 * 5,
+  })
+  const recommendedCards = recommended.map(item => ({
+    id: item.post_id,
+    title: item.title,
+    slug: item.slug,
+    excerpt: item.excerpt,
+    cover_image: item.cover_image,
+    series_id: item.series_id,
+    series: item.series_id ? { id: item.series_id, name: item.series_name ?? 'Football Stories', slug: item.series_slug ?? '' } : null,
+    status: 'published',
+    view_count: 0,
+    featured: false,
+    author_id: null,
+    content: null,
+    meta_title: null,
+    meta_desc: null,
+    og_image: null,
+    image_alt: null,
+    image_credit: null,
+    image_source_url: null,
+    scheduled_at: null,
+    league_id: null,
+    club_id: null,
+    player_id: null,
+    season_id: null,
+    created_at: item.published_at,
+    updated_at: item.published_at,
+    published_at: item.published_at,
+  })) as unknown as PostWithDetails[]
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -77,6 +113,24 @@ export default function HomePage() {
           <Magnetic><Link to="/cong-dong" className="btn-primary">Khám phá trung tâm eFootball <ArrowRight size={15} /></Link></Magnetic>
         </div>
       </section></Reveal>
+
+      {user && (
+        <Reveal>
+          <section className="py-10 md:py-14 border-b" style={{ borderColor: 'var(--border-color)' }} aria-labelledby="home-recommended-title">
+            <div className="flex items-end justify-between gap-4 mb-6">
+              <div>
+                <p className="eyebrow"><Sparkles size={14} /> Dành cho bạn</p>
+                <h2 id="home-recommended-title" className="section-heading mb-1">Những câu chuyện hợp gu.</h2>
+                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Gợi ý dựa trên chuyên đề bạn theo dõi và cách bạn khám phá Football Stories.</p>
+              </div>
+              <Link to="/profile" className="btn-ghost hidden sm:inline-flex">Xem hồ sơ <ArrowRight size={14} /></Link>
+            </div>
+            {loadingRecommended ? <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{[1, 2, 3].map(item => <div key={item} className="skeleton h-24 rounded-xl" />)}</div>
+              : recommendedCards.length > 0 ? <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{recommendedCards.slice(0, 6).map(post => <PostCard key={post.id} post={post} variant="compact" />)}</div>
+              : <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Hãy đọc, lưu hoặc theo dõi thêm chuyên đề để nhận gợi ý phù hợp hơn.</p>}
+          </section>
+        </Reveal>
+      )}
 
       <Reveal><section className="py-10 md:py-14">
         <div className="flex items-end justify-between gap-4 mb-6">

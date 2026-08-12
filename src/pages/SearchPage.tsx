@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { fetchPosts, fetchTaxonomies } from '@/services/api'
+import { fetchPosts, fetchTaxonomies, recordUserActivity } from '@/services/api'
+import { useAuth } from '@/hooks/useAuth'
 import PostCard, { PostCardSkeleton } from '@/components/PostCard'
 import Reveal from '@/components/Reveal'
 import { useDebounce } from '@/hooks/useDebounce'
@@ -13,6 +14,7 @@ const PAGE_SIZE = 9
 const POPULAR_SEARCHES = ['Bóng đá Việt Nam', 'Chiến thuật', 'World Cup', 'Premier League', 'Huyền thoại sân cỏ']
 
 export default function SearchPage() {
+  const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const [input, setInput] = useState(searchParams.get('q') ?? '')
   const [page, setPage] = useState(Number(searchParams.get('page')) || 1)
@@ -61,6 +63,11 @@ export default function SearchPage() {
     }, 1200)
     return () => window.clearTimeout(timer)
   }, [query])
+
+  useEffect(() => {
+    if (!user?.id || query.length < 2) return
+    void recordUserActivity(user.id, 'search', null, null, { query })
+  }, [query, user?.id])
 
   const { data: taxonomies } = useQuery({
     queryKey: ['taxonomies'],

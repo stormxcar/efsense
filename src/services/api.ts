@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { cloudinaryVideoPosterUrl, optimizeCloudinaryDeliveryUrl, uploadImageToCloudinary, uploadVideoToCloudinary } from '@/lib/cloudinary'
-import type { CommunityCommentWithUser, CommunityPostWithDetails, HistoryTimelineEventWithPost, UserRow } from '@/types/database'
+import type { CommunityCommentWithUser, CommunityPostWithDetails, HistoryTimelineEventWithPost, RecommendedPostRow, UserRow } from '@/types/database'
 
 // ---- AUTH SERVICES ----
 
@@ -94,6 +94,28 @@ export async function fetchPosts({
   if (seasonId) query = query.eq('season_id', seasonId)
 
   return query
+}
+
+export async function recordUserActivity(
+  userId: string,
+  eventType: string,
+  targetType?: string | null,
+  targetId?: string | null,
+  metadata: Record<string, unknown> = {},
+) {
+  const { data, error } = await supabase.rpc('record_user_activity', {
+    p_user_id: userId,
+    p_event_type: eventType,
+    p_target_type: targetType ?? null,
+    p_target_id: targetId ?? null,
+    p_metadata: metadata,
+  })
+  return { data: data as string | null, error }
+}
+
+export async function fetchRecommendedPosts(userId: string, limit = 12) {
+  const { data, error } = await supabase.rpc('recommended_posts', { p_user_id: userId, p_limit: limit })
+  return { data: (data ?? []) as RecommendedPostRow[], error }
 }
 
 export async function fetchPostBySlug(slug: string, incrementView = true) {

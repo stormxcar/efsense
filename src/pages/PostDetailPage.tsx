@@ -7,6 +7,7 @@ import {
   toggleLike,
   toggleBookmark,
   getUserInteractions,
+  recordUserActivity,
 } from '@/services/api'
 import { useAuth } from '@/hooks/useAuth'
 import CommentSection from '@/components/CommentSection'
@@ -88,6 +89,11 @@ export default function PostDetailPage() {
       cover_image: post.cover_image,
     })
   }, [post])
+
+  useEffect(() => {
+    if (!post?.id || !user?.id) return
+    void recordUserActivity(user.id, 'post_open', 'post', post.id)
+  }, [post?.id, user?.id])
 
   const likeMutation = useMutation({
     mutationFn: async (wasLiked: boolean) => {

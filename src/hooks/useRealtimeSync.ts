@@ -19,7 +19,7 @@ export function useRealtimeSync() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, payload => {
         const post = payload.new as Partial<PostRow>
         const oldPost = payload.old as Partial<PostRow>
-        refresh(['posts', 'post', 'related', 'weekly-popular', 'admin-posts', 'admin-stats', 'admin-recent-posts', 'admin-charts', 'media'])
+        refresh(['posts', 'post', 'related', 'weekly-popular', 'recommended-posts', 'admin-posts', 'admin-stats', 'admin-recent-posts', 'admin-charts', 'media'])
         if (
           (payload.eventType === 'INSERT' && post.status === 'published') ||
           (payload.eventType === 'UPDATE' && oldPost.status !== 'published' && post.status === 'published')
@@ -31,7 +31,7 @@ export function useRealtimeSync() {
         }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, payload => {
-        refresh(['comments', 'admin-comments', 'admin-stats'])
+        refresh(['comments', 'admin-comments', 'recommended-posts', 'admin-stats'])
         if (payload.eventType === 'INSERT') {
           toast('Vừa có bình luận hoặc phản hồi mới.', {
             id: `realtime-comment-${(payload.new as { id?: string }).id}`,
@@ -40,17 +40,17 @@ export function useRealtimeSync() {
         }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, payload => {
-        refresh(['post', 'posts', 'liked-posts', 'post-interactions', 'admin-stats'])
+        refresh(['post', 'posts', 'liked-posts', 'post-interactions', 'recommended-posts', 'admin-stats'])
         if (payload.eventType === 'INSERT') toast('Một bài viết vừa nhận lượt thích mới.', { id: `realtime-like-${(payload.new as { post_id?: string; user_id?: string }).post_id}-${(payload.new as { user_id?: string }).user_id}`, className: 'realtime-toast' })
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bookmarks' }, () => {
-        refresh(['bookmarks', 'post-interactions'])
+        refresh(['bookmarks', 'post-interactions', 'recommended-posts'])
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'follows' }, () => {
-        refresh(['follows', 'series-follow'])
+        refresh(['follows', 'series-follow', 'recommended-posts'])
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'post_shares' }, payload => {
-        refresh(['post-shares', 'admin-stats'])
+        refresh(['post-shares', 'recommended-posts', 'admin-stats'])
         if (payload.eventType === 'INSERT') toast('Một bài viết vừa được chia sẻ.', { id: `realtime-share-${(payload.new as { id?: string }).id}`, className: 'realtime-toast' })
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'series' }, () => {
@@ -83,6 +83,9 @@ export function useRealtimeSync() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'community_post_likes' }, payload => {
         refresh(['community-like', 'community-posts'])
         if (payload.eventType === 'INSERT') toast('Tương tác cộng đồng vừa được cập nhật.', { id: 'realtime-community-like', className: 'realtime-toast' })
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'community_user_relations' }, () => {
+        refresh(['community-relation', 'community-posts', 'recommended-posts'])
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'history_timeline_events' }, payload => {
         refresh(['timeline-events', 'admin-timeline'])

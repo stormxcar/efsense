@@ -1,11 +1,11 @@
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchSeriesBySlug, fetchPosts, toggleFollow } from '@/services/api'
+import { fetchSeriesBySlug, fetchPosts, recordUserActivity, toggleFollow } from '@/services/api'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import PostCard, { PostCardSkeleton } from '@/components/PostCard'
 import { BookmarkIcon, ArrowLeft, ArrowRight, Rss } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { SERIES_ICONS } from '@/utils'
 import toast from 'react-hot-toast'
 import type { PostWithDetails } from '@/types/database'
@@ -61,6 +61,11 @@ export default function SeriesPage() {
     onSuccess: (_data, wasFollowing) => toast.success(wasFollowing ? 'Đã bỏ theo dõi chuyên đề' : 'Đã theo dõi chuyên đề'),
     onSettled: () => queryClient.invalidateQueries({ queryKey: followKey }),
   })
+
+  useEffect(() => {
+    if (!user?.id || !series?.id) return
+    void recordUserActivity(user.id, 'series_open', 'series', series.id)
+  }, [series?.id, user?.id])
 
   const posts = postsData?.data ?? []
   const totalCount = postsData?.count ?? 0
