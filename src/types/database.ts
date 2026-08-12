@@ -1,0 +1,254 @@
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
+
+// Generic helper – avoids repeat of Row/Insert/Update pattern issues
+type RowOf<T> = T
+type InsertOf<T> = Partial<T>
+type UpdateOf<T> = Partial<T>
+
+// ---- Raw Row types ----
+export interface UserRow {
+  id: string
+  email: string
+  username: string
+  avatar: string | null
+  role: 'admin' | 'user'
+  status: 'active' | 'suspended' | 'banned'
+  bio: string | null
+  created_at: string
+  last_login: string | null
+}
+
+export interface SeriesRow {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  thumbnail: string | null
+  status: 'published' | 'draft'
+  created_at: string
+  updated_at: string
+}
+
+export interface PostRow {
+  id: string
+  title: string
+  slug: string
+  excerpt: string | null
+  content: string | null
+  cover_image: string | null
+  author_id: string | null
+  series_id: string | null
+  status: 'draft' | 'published' | 'scheduled'
+  view_count: number
+  featured: boolean
+  meta_title: string | null
+  meta_desc: string | null
+  og_image: string | null
+  image_alt: string | null
+  image_credit: string | null
+  image_source_url: string | null
+  scheduled_at: string | null
+  league_id: string | null
+  club_id: string | null
+  player_id: string | null
+  season_id: string | null
+  created_at: string
+  updated_at: string
+  published_at: string | null
+}
+
+export interface TaxonomyRow {
+  id: string
+  name: string
+  slug: string
+}
+
+export interface GalleryImageRow {
+  id: string
+  post_id: string
+  image_url: string
+  image_alt: string
+  caption: string | null
+  image_credit: string | null
+  image_source_url: string | null
+  sort_order: number
+  created_at: string
+}
+
+export interface TagRow {
+  id: string
+  name: string
+  slug: string
+  created_at: string
+}
+
+export interface CommentRow {
+  id: string
+  post_id: string
+  user_id: string
+  parent_comment_id: string | null
+  content: string
+  image_url: string | null
+  status: 'visible' | 'hidden' | 'deleted'
+  created_at: string
+  updated_at: string
+}
+
+export interface NotificationRow {
+  id: string
+  user_id: string
+  type: string
+  title: string
+  body: string | null
+  link: string | null
+  is_read: boolean
+  created_at: string
+}
+
+export interface PostShareRow {
+  id: string
+  post_id: string
+  user_id: string
+  platform: string
+  created_at: string
+}
+
+export interface ReportRow {
+  id: string
+  reporter_id: string
+  reported_user_id: string
+  reason: string
+  description: string | null
+  status: 'pending' | 'ignored' | 'warned' | 'locked'
+  created_at: string
+}
+
+// ---- Database type for Supabase client ----
+export interface Database {
+  public: {
+    Tables: {
+      users: {
+        Row: UserRow
+        Insert: Partial<UserRow>
+        Update: Partial<UserRow>
+      }
+      series: {
+        Row: SeriesRow
+        Insert: Partial<SeriesRow>
+        Update: Partial<SeriesRow>
+      }
+      posts: {
+        Row: PostRow
+        Insert: Partial<PostRow>
+        Update: Partial<PostRow>
+      }
+      leagues: {
+        Row: TaxonomyRow & { country: string | null; logo_url: string | null; created_at: string }
+        Insert: Partial<TaxonomyRow & { country: string | null; logo_url: string | null }>
+        Update: Partial<TaxonomyRow & { country: string | null; logo_url: string | null }>
+      }
+      clubs: {
+        Row: TaxonomyRow & { league_id: string | null; logo_url: string | null; created_at: string }
+        Insert: Partial<TaxonomyRow & { league_id: string | null; logo_url: string | null }>
+        Update: Partial<TaxonomyRow & { league_id: string | null; logo_url: string | null }>
+      }
+      players: {
+        Row: TaxonomyRow & { club_id: string | null; photo_url: string | null; created_at: string }
+        Insert: Partial<TaxonomyRow & { club_id: string | null; photo_url: string | null }>
+        Update: Partial<TaxonomyRow & { club_id: string | null; photo_url: string | null }>
+      }
+      seasons: {
+        Row: TaxonomyRow & { starts_on: string | null; ends_on: string | null; created_at: string }
+        Insert: Partial<TaxonomyRow & { starts_on: string | null; ends_on: string | null }>
+        Update: Partial<TaxonomyRow & { starts_on: string | null; ends_on: string | null }>
+      }
+      post_gallery_images: {
+        Row: GalleryImageRow
+        Insert: Partial<GalleryImageRow>
+        Update: Partial<GalleryImageRow>
+      }
+      tags: {
+        Row: TagRow
+        Insert: Partial<TagRow>
+        Update: Partial<TagRow>
+      }
+      post_tags: {
+        Row: { post_id: string; tag_id: string }
+        Insert: { post_id: string; tag_id: string }
+        Update: { post_id?: string; tag_id?: string }
+      }
+      comments: {
+        Row: CommentRow
+        Insert: Partial<CommentRow>
+        Update: Partial<CommentRow>
+      }
+      likes: {
+        Row: { user_id: string; post_id: string; created_at: string }
+        Insert: { user_id: string; post_id: string }
+        Update: { user_id?: string; post_id?: string }
+      }
+      bookmarks: {
+        Row: { user_id: string; post_id: string; created_at: string }
+        Insert: { user_id: string; post_id: string }
+        Update: { user_id?: string; post_id?: string }
+      }
+      follows: {
+        Row: { user_id: string; series_id: string; created_at: string }
+        Insert: { user_id: string; series_id: string }
+        Update: { user_id?: string; series_id?: string }
+      }
+      post_shares: {
+        Row: PostShareRow
+        Insert: { post_id: string; user_id: string; platform: string }
+        Update: Record<string, never>
+      }
+      notifications: {
+        Row: NotificationRow
+        Insert: Partial<NotificationRow>
+        Update: Partial<NotificationRow>
+      }
+      reports: {
+        Row: ReportRow
+        Insert: Partial<ReportRow>
+        Update: Partial<ReportRow>
+      }
+      login_attempts: {
+        Row: { id: string; email: string; ip_address: string; success: boolean; attempted_at: string }
+        Insert: { email: string; ip_address: string; success: boolean }
+        Update: Record<string, never>
+      }
+      ip_blocks: {
+        Row: { id: string; ip_address: string; attempt_count: number; blocked_until: string | null; created_at: string; updated_at: string }
+        Insert: { ip_address: string; attempt_count?: number; blocked_until?: string | null }
+        Update: { attempt_count?: number; blocked_until?: string | null }
+      }
+    }
+    Views: Record<string, never>
+    Functions: {
+      is_admin: { Args: Record<string, never>; Returns: boolean }
+      record_post_view: { Args: { p_post_id: string; p_visitor_key: string }; Returns: number }
+      weekly_popular_posts: { Args: { p_limit?: number }; Returns: { post_id: string; weekly_views: number }[] }
+      subscribe_newsletter: { Args: { p_email: string }; Returns: string }
+    }
+    Enums: Record<string, never>
+  }
+}
+
+// Extended types with joins
+export interface PostWithDetails extends PostRow {
+  author?: UserRow | null
+  series?: SeriesRow | null
+  tags?: TagRow[]
+  likes_count?: number
+  comments_count?: number
+  is_liked?: boolean
+  is_bookmarked?: boolean
+  weekly_views?: number
+  post_gallery_images?: GalleryImageRow[]
+  likes?: { count: number }[]
+}
+
+export interface CommentWithUser extends CommentRow {
+  user?: UserRow | null
+  replies?: CommentWithUser[]
+}
