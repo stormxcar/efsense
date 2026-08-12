@@ -2,9 +2,18 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchReports, updateReportStatus } from '@/services/api'
 import { AlertTriangle, X, Lock } from 'lucide-react'
 import { formatRelativeDate } from '@/utils'
-import type { ReportRow } from '@/types/database'
 import Tooltip from '@/components/Tooltip'
 import toast from 'react-hot-toast'
+
+type AdminReport = {
+  id: string
+  reason: string
+  description: string | null
+  status: 'pending' | 'ignored' | 'warned' | 'locked'
+  created_at: string
+  reporter?: { username?: string | null } | null
+  reported?: { username?: string | null; status?: string | null } | null
+}
 
 const REASON_LABELS: Record<string, string> = {
   spam: 'Nội dung rác',
@@ -17,7 +26,7 @@ const REASON_LABELS: Record<string, string> = {
 export default function AdminReports() {
   const qc = useQueryClient()
 
-  const { data: reports = [], isLoading } = useQuery({
+  const { data: reports = [] } = useQuery({
     queryKey: ['admin-reports'],
     queryFn: () => fetchReports().then(r => r.data ?? []),
   })
@@ -28,8 +37,8 @@ export default function AdminReports() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-reports'] }); toast.success('Đã cập nhật báo cáo') },
   })
 
-  const pending = reports.filter((r: any) => r.status === 'pending')
-  const resolved = reports.filter((r: any) => r.status !== 'pending')
+  const pending = reports.filter((r: AdminReport) => r.status === 'pending')
+  const resolved = reports.filter((r: AdminReport) => r.status !== 'pending')
 
   return (
     <div className="p-8">
@@ -51,7 +60,7 @@ export default function AdminReports() {
         </div>
       ) : (
         <div className="space-y-4 mb-10">
-          {pending.map((report: any) => (
+          {pending.map((report: AdminReport) => (
             <ReportCard key={report.id} report={report} onAction={(status) => statusMutation.mutate({ id: report.id, status })} />
           ))}
         </div>
@@ -62,7 +71,7 @@ export default function AdminReports() {
         <>
           <h2 className="font-semibold text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>Báo cáo đã xử lý</h2>
           <div className="space-y-3">
-            {resolved.map((report: any) => (
+            {resolved.map((report: AdminReport) => (
               <ReportCard key={report.id} report={report} resolved />
             ))}
           </div>
@@ -73,7 +82,7 @@ export default function AdminReports() {
 }
 
 function ReportCard({ report, onAction, resolved }: {
-  report: any
+  report: AdminReport
   onAction?: (status: 'ignored' | 'warned' | 'locked') => void
   resolved?: boolean
 }) {

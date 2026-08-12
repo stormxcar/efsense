@@ -1,18 +1,22 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { updateUserStatus, updateUserRole } from '@/services/api'
-import { Search, UserX, UserCheck, Shield, ShieldOff, Trash2, PlusCircle, UserPlus } from 'lucide-react'
+import { createManagedUser, updateUserRole, runAdminSecurityAction } from '@/services/api'
+import { Search, UserX, UserCheck, Trash2, PlusCircle, UserPlus, LogOut } from 'lucide-react'
 import { formatDate, getInitials } from '@/utils'
 import Tooltip from '@/components/Tooltip'
 import toast from 'react-hot-toast'
+import { useAuth } from '@/hooks/useAuth'
+import { requiredText, validateAdminEmail, validatePassword } from '@/utils/validation'
+import type { UserRow } from '@/types/database'
 
 export default function AdminUsers() {
+  const { user: currentUser } = useAuth()
   const qc = useQueryClient()
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [showNewUser, setShowNewUser] = useState(false)
-  const [newUserForm, setNewUserForm] = useState({ email: '', password: '', username: '', role: 'user' as 'user' | 'admin' })
+  const [newUserForm, setNewUserForm] = useState({ email: '', password: '', username: '', role: 'user' as UserRow['role'] })
   const PAGE_SIZE = 15
 
   const { data, isLoading } = useQuery({
@@ -30,17 +34,11 @@ export default function AdminUsers() {
 
   const createUserMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.auth.signUp({
-        email: newUserForm.email,
-        password: newUserForm.password,
-        options: { data: { username: newUserForm.username } }
-      })
-      if (error) throw error
-      // if role is admin, wait for trigger to sync to public.users, then update role
-      if (newUserForm.role === 'admin' && data.user) {
-        await new Promise(resolve => setTimeout(resolve, 800))
-        await updateUserRole(data.user.id, 'admin')
-      }
+      const email = validateAdminEmail(newUserForm.email)
+      const password = validatePassword(newUserForm.password)
+      const username = requiredText(newUserForm.username, 'Tên hiển thị', 2, 40)
+      const result = await createManagedUser({ email, password, username, role: newUserForm.role })
+      if (result.error) throw result.error
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-users'] })
@@ -48,28 +46,42 @@ export default function AdminUsers() {
       setNewUserForm({ email: '', password: '', username: '', role: 'user' })
       toast.success('Đã thêm người dùng')
     },
-    onError: (err: any) => toast.error(err.message),
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : 'Không thể tạo người dùng'),
   })
 
   const statusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: 'active' | 'suspended' | 'banned' }) => {
-      await updateUserStatus(id, status)
+      if (id === currentUser?.id && status !== 'active') throw new Error('Không thể tự khóa tài khoản quản trị đang đăng nhập')
+      const result = await runAdminSecurityAction(status === 'active' ? 'unlock' : 'lock', id)
+      if (result.error) throw result.error
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-users'] }); toast.success('Đã cập nhật trạng thái người dùng') },
+    onError: (error: unknown) => toast.error(error instanceof Error ? error.message : 'Không thể cập nhật trạng thái'),
   })
 
   const roleMutation = useMutation({
-    mutationFn: async ({ id, role }: { id: string; role: 'admin' | 'user' }) => {
+    mutationFn: async ({ id, role }: { id: string; role: UserRow['role'] }) => {
+      if (id === currentUser?.id && role !== 'admin') throw new Error('Không thể tự gỡ quyền quản trị của chính mình')
       await updateUserRole(id, role)
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-users'] }); toast.success('Đã cập nhật vai trò người dùng') },
+    onError: (error: unknown) => toast.error(error instanceof Error ? error.message : 'Không thể cập nhật vai trò'),
+  })
+
+  const securityMutation = useMutation({
+    mutationFn: ({ id, action }: { id: string; action: 'lock' | 'unlock' | 'revoke_sessions' }) => runAdminSecurityAction(action, id).then(result => { if (result.error) throw result.error }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-users'] }); toast.success('Đã cập nhật bảo mật tài khoản') },
+    onError: (error: unknown) => toast.error(error instanceof Error ? error.message : 'Không thể cập nhật bảo mật'),
   })
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      await supabase.from('users').delete().eq('id', id)
+      if (id === currentUser?.id) throw new Error('Không thể xóa tài khoản quản trị đang đăng nhập')
+      const result = await supabase.from('users').delete().eq('id', id)
+      if (result.error) throw result.error
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-users'] }); toast.success('Đã xóa người dùng') },
+    onError: (error: unknown) => toast.error(error instanceof Error ? error.message : 'Không thể xóa người dùng'),
   })
 
   return (
@@ -113,7 +125,7 @@ export default function AdminUsers() {
               <select value={newUserForm.role} onChange={e => setNewUserForm(f => ({ ...f, role: e.target.value as 'user' | 'admin' }))}
                 className="input text-sm">
                 <option value="user">Người dùng</option>
-                <option value="admin">Quản trị viên</option>
+                <option value="admin">Quản trị viên</option><option value="editor">Biên tập viên</option><option value="moderator">Kiểm duyệt viên</option><option value="contributor">Cộng tác viên</option>
               </select>
             </div>
           </div>
@@ -145,7 +157,7 @@ export default function AdminUsers() {
                     {[...Array(5)].map((_, j) => <td key={j} className="px-4 py-3"><div className="skeleton h-4 rounded" /></td>)}
                   </tr>
                 ))
-              ) : users.map((u: any) => (
+              ) : (users as UserRow[]).map(u => (
                 <tr key={u.id} className="border-b hover:bg-white/5 transition-colors" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
@@ -163,11 +175,7 @@ export default function AdminUsers() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3">
-                    <span className={`badge text-xs ${u.role === 'admin' ? 'badge-blue' : 'badge-green'}`}>
-                      {u.role === 'admin' ? 'Quản trị viên' : 'Người dùng'}
-                    </span>
-                  </td>
+                  <td className="px-4 py-3"><select className="input text-xs py-1 px-2 min-w-36" value={u.role} disabled={roleMutation.isPending || u.id === currentUser?.id} onChange={event => roleMutation.mutate({ id: u.id, role: event.target.value as UserRow['role'] })} aria-label={`Vai trò của ${u.username}`}><option value="user">Người dùng</option><option value="contributor">Cộng tác viên</option><option value="editor">Biên tập viên</option><option value="moderator">Kiểm duyệt viên</option><option value="admin">Quản trị viên</option></select></td>
                   <td className="px-4 py-3">
                     <span className={`badge text-xs ${u.status === 'active' ? 'badge-green' : u.status === 'suspended' ? 'badge-orange' : 'badge-red'}`}>
                       {u.status === 'active' ? 'Hoạt động' : u.status === 'suspended' ? 'Tạm ngưng' : 'Đã cấm'}
@@ -191,21 +199,7 @@ export default function AdminUsers() {
                           </button>
                         </Tooltip>
                       )}
-                      {u.role === 'user' ? (
-                        <Tooltip content="Cấp quyền quản trị viên" placement="top">
-                          <button onClick={() => roleMutation.mutate({ id: u.id, role: 'admin' })} disabled={roleMutation.isPending}
-                            className="btn-ghost px-2 py-1 text-xs disabled:opacity-50" style={{ color: '#60a5fa' }}>
-                            <Shield size={13} />
-                          </button>
-                        </Tooltip>
-                      ) : (
-                        <Tooltip content="Gỡ quyền quản trị viên" placement="top">
-                          <button onClick={() => roleMutation.mutate({ id: u.id, role: 'user' })} disabled={roleMutation.isPending}
-                            className="btn-ghost px-2 py-1 text-xs disabled:opacity-50" style={{ color: 'var(--text-muted)' }}>
-                            <ShieldOff size={13} />
-                          </button>
-                        </Tooltip>
-                      )}
+                      <Tooltip content="Thu hồi toàn bộ phiên đăng nhập" placement="top"><button onClick={() => securityMutation.mutate({ id: u.id, action: 'revoke_sessions' })} disabled={securityMutation.isPending} className="btn-ghost px-2 py-1 text-xs" style={{ color: '#f59e0b' }}><LogOut size={13} /></button></Tooltip>
                       <Tooltip content="Xóa người dùng vĩnh viễn" placement="top">
                         <button onClick={() => { if (confirm('Bạn có chắc muốn xóa người dùng này?')) deleteMutation.mutate(u.id) }} disabled={deleteMutation.isPending}
                           className="btn-ghost px-2 py-1 text-xs disabled:opacity-50" style={{ color: '#f87171' }}>

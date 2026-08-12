@@ -66,7 +66,7 @@ export default function SearchPage() {
     placeholderData: previous => previous,
   })
 
-  const posts = (data?.data ?? []) as PostWithDetails[]
+  const posts = (data?.data ?? []) as unknown as PostWithDetails[]
   const total = data?.count ?? 0
   const totalPages = Math.ceil(total / PAGE_SIZE)
 

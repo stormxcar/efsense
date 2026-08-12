@@ -124,7 +124,7 @@ export default function SeriesPage() {
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
-            {(posts as PostWithDetails[]).map(post => <PostCard key={post.id} post={post} />)}
+            {(posts as unknown as PostWithDetails[]).map(post => <PostCard key={post.id} post={post} />)}
           </div>
 
           {totalPages > 1 && (

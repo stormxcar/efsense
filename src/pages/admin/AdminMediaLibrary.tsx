@@ -1,0 +1,8 @@
+import { useQuery } from '@tanstack/react-query'
+import { supabase } from '@/lib/supabase'
+import { Video, HardDrive } from 'lucide-react'
+
+export default function AdminMediaLibrary() {
+  const { data = [], isLoading } = useQuery({ queryKey: ['admin-media-assets'], queryFn: async () => { const result = await supabase.from('media_assets').select('*').order('created_at', { ascending: false }).limit(200); if (result.error) throw result.error; return result.data ?? [] } })
+  return <div className="p-8"><div className="flex items-center gap-3 mb-6"><HardDrive className="text-blue-400" /><div><h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-family-display)' }}>Thư viện media</h1><p className="text-sm" style={{ color: 'var(--text-muted)' }}>Tài sản Cloudinary đã đăng ký; media chưa được tham chiếu sẽ được đánh dấu để dọn dẹp.</p></div></div>{isLoading ? <div className="skeleton h-32 rounded-xl" /> : data.length === 0 ? <div className="empty-state">Chưa có media được đăng ký. Các luồng upload mới sẽ ghi nhận tài sản tại đây.</div> : <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{data.map(asset => <div key={asset.id} className="card overflow-hidden"><div className="aspect-video bg-black/20 flex items-center justify-center">{asset.resource_type === 'video' ? <Video /> : <img src={asset.secure_url} alt="" className="w-full h-full object-cover" loading="lazy" />}</div><div className="p-3"><p className="text-xs truncate">{asset.public_id}</p><p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>{asset.resource_type === 'video' ? 'Video' : 'Ảnh'}</p></div></div>)}</div>}</div>
+}

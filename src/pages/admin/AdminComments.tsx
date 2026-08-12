@@ -6,6 +6,15 @@ import { EyeOff, Trash2, Eye } from 'lucide-react'
 import { formatRelativeDate, getInitials } from '@/utils'
 import toast from 'react-hot-toast'
 
+type AdminComment = {
+  id: string
+  content: string
+  status: 'visible' | 'hidden' | 'deleted' | string
+  created_at: string
+  user?: { username?: string | null; avatar?: string | null } | null
+  post?: { title?: string | null; slug?: string | null } | null
+}
+
 export default function AdminComments() {
   const qc = useQueryClient()
   const [page, setPage] = useState(1)
@@ -64,11 +73,11 @@ export default function AdminComments() {
       <div className="space-y-3">
         {isLoading ? (
           [...Array(5)].map((_, i) => <div key={i} className="skeleton h-24 rounded-2xl" />)
-        ) : comments.map((c: any) => (
+        ) : comments.map((c: AdminComment) => (
           <div key={c.id} className={`card p-5 ${c.status === 'hidden' ? 'opacity-60' : ''}`}>
             <div className="flex items-start gap-4">
               {c.user?.avatar ? (
-                <img src={c.user.avatar} alt={c.user.username} className="w-9 h-9 rounded-lg object-cover shrink-0" />
+                <img src={c.user.avatar} alt={c.user.username ?? 'Người dùng'} className="w-9 h-9 rounded-lg object-cover shrink-0" />
               ) : (
                 <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0"
                   style={{ background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)' }}>

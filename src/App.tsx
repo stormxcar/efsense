@@ -20,6 +20,8 @@ const PostDetailPage = lazy(() => import('@/pages/PostDetailPage'))
 const SearchPage = lazy(() => import('@/pages/SearchPage'))
 const MediaPage = lazy(() => import('@/pages/MediaPage'))
 const WeeklyPopularPage = lazy(() => import('@/pages/WeeklyPopularPage'))
+const CommunityPage = lazy(() => import('@/pages/CommunityPage'))
+const HistoryTimelinePage = lazy(() => import('@/pages/HistoryTimelinePage'))
 const LoginPage = lazy(() => import('@/pages/LoginPage'))
 const RegisterPage = lazy(() => import('@/pages/RegisterPage'))
 const ProfilePage = lazy(() => import('@/pages/ProfilePage'))
@@ -36,6 +38,13 @@ const AdminUsers = lazy(() => import('@/pages/admin/AdminUsers'))
 const AdminComments = lazy(() => import('@/pages/admin/AdminComments'))
 const AdminReports = lazy(() => import('@/pages/admin/AdminReports'))
 const AdminPostPreview = lazy(() => import('@/pages/admin/AdminPostPreview'))
+const AdminTimeline = lazy(() => import('@/pages/admin/AdminTimeline'))
+const AdminAuditLogs = lazy(() => import('@/pages/admin/AdminAuditLogs'))
+const AdminModeration = lazy(() => import('@/pages/admin/AdminModeration'))
+const AdminEditorialCalendar = lazy(() => import('@/pages/admin/AdminEditorialCalendar'))
+const AdminMediaLibrary = lazy(() => import('@/pages/admin/AdminMediaLibrary'))
+const AdminPostRevisions = lazy(() => import('@/pages/admin/AdminPostRevisions'))
+const AdminSecurity = lazy(() => import('@/pages/admin/AdminSecurity'))
 
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
@@ -79,6 +88,9 @@ function AppRoutes() {
           <Route path="/search" element={<S><SearchPage /></S>} />
           <Route path="/media" element={<S><MediaPage /></S>} />
           <Route path="/doc-nhieu-tuan-nay" element={<S><WeeklyPopularPage /></S>} />
+          <Route path="/cong-dong" element={<S><CommunityPage /></S>} />
+          <Route path="/ef-community" element={<S><CommunityPage /></S>} />
+          <Route path="/lich-su" element={<S><HistoryTimelinePage /></S>} />
           <Route path="/profile" element={<S><ProfilePage /></S>} />
         </Route>
 
@@ -95,10 +107,17 @@ function AppRoutes() {
           <Route path="posts/new" element={<S><AdminPostEditor /></S>} />
           <Route path="posts/:id/edit" element={<S><AdminPostEditor /></S>} />
           <Route path="posts/:id/preview" element={<S><AdminPostPreview /></S>} />
+          <Route path="posts/:id/revisions" element={<S><AdminPostRevisions /></S>} />
           <Route path="series" element={<S><AdminSeries /></S>} />
           <Route path="users" element={<S><AdminUsers /></S>} />
           <Route path="comments" element={<S><AdminComments /></S>} />
           <Route path="reports" element={<S><AdminReports /></S>} />
+          <Route path="timeline" element={<S><AdminTimeline /></S>} />
+          <Route path="audit-log" element={<S><AdminAuditLogs /></S>} />
+          <Route path="moderation" element={<S><AdminModeration /></S>} />
+          <Route path="calendar" element={<S><AdminEditorialCalendar /></S>} />
+          <Route path="media-library" element={<S><AdminMediaLibrary /></S>} />
+          <Route path="security" element={<S><AdminSecurity /></S>} />
         </Route>
 
         {/* 404 */}

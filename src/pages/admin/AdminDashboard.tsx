@@ -7,17 +7,23 @@ import { format, subDays } from 'date-fns'
 import { vi } from 'date-fns/locale'
 import TooltipComp from '@/components/Tooltip'
 
+type SeriesDistribution = { name: string; posts?: Array<{ id: string }> }
+type RecentPost = { id: string; title: string; status: string; view_count: number; author?: { username?: string }; series?: { name?: string } }
+
 export default function AdminDashboard() {
   const { data: stats } = useQuery({
     queryKey: ['admin-stats'],
     queryFn: async () => {
-      const [posts, users, comments, reports, likes, shares] = await Promise.all([
+      const [posts, users, comments, reports, likes, shares, reels, communityPending, communityTotal] = await Promise.all([
         supabase.from('posts').select('*', { count: 'exact', head: true }),
         supabase.from('users').select('*', { count: 'exact', head: true }),
         supabase.from('comments').select('*', { count: 'exact', head: true }),
         supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
         supabase.from('likes').select('*', { count: 'exact', head: true }),
         supabase.from('post_shares').select('*', { count: 'exact', head: true }),
+        supabase.from('community_posts').select('*', { count: 'exact', head: true }).eq('post_type', 'reel'),
+        supabase.from('community_posts').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase.from('community_posts').select('*', { count: 'exact', head: true }),
       ])
       return {
         posts: posts.count ?? 0,
@@ -26,6 +32,9 @@ export default function AdminDashboard() {
         pendingReports: reports.count ?? 0,
         likes: likes.count ?? 0,
         shares: shares.count ?? 0,
+        reels: reels.count ?? 0,
+        communityPending: communityPending.count ?? 0,
+        approvalRate: communityTotal.count ? Math.round(((communityTotal.count - (communityPending.count ?? 0)) / communityTotal.count) * 100) : 100,
       }
     },
   })
@@ -73,10 +82,10 @@ export default function AdminDashboard() {
       const trendData = Object.keys(dateMap).map(k => ({ date: k, ...dateMap[k] }))
 
       // Process Bar Chart (posts per series)
-      const distributionData = seriesData?.map((s: any) => ({
+      const distributionData = (seriesData as unknown as SeriesDistribution[] | null)?.map(s => ({
         name: s.name,
         posts: s.posts?.length || 0
-      })).sort((a: any, b: any) => b.posts - a.posts).slice(0, 5) || []
+      })).sort((a, b) => b.posts - a.posts).slice(0, 5) || []
 
       return { trendData, distributionData }
     }
@@ -89,6 +98,8 @@ export default function AdminDashboard() {
     { label: 'Lượt thích', value: stats?.likes ?? 0, Icon: Heart, color: '#ef476f', href: '/admin/posts' },
     { label: 'Lượt chia sẻ', value: stats?.shares ?? 0, Icon: Share2, color: '#06b6d4', href: '/admin/posts' },
     { label: 'Báo cáo chờ xử lý', value: stats?.pendingReports ?? 0, Icon: Flag, color: '#f97316', href: '/admin/reports' },
+    { label: 'Reels cộng đồng', value: stats?.reels ?? 0, Icon: BarChart2, color: '#ec4899', href: '/admin/moderation' },
+    { label: 'Tỷ lệ duyệt', value: `${stats?.approvalRate ?? 0}%`, Icon: TrendingUp, color: '#84cc16', href: '/admin/moderation' },
   ]
 
   return (
@@ -104,7 +115,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-4 mb-8">
         {statCards.map(({ label, value, Icon, color, href }) => (
           <TooltipComp key={label} content={`Nhấn để quản lý ${label.toLowerCase()}`} placement="bottom">
             <Link to={href} className="card p-5 hover:scale-[1.02] transition-all relative w-full">
@@ -114,12 +125,12 @@ export default function AdminDashboard() {
                   <Icon size={20} />
                 </div>
                 {/* Urgent badge for pending reports */}
-                {label === 'Báo cáo chờ xử lý' && value > 0 && (
+                {label === 'Báo cáo chờ xử lý' && typeof value === 'number' && value > 0 && (
                   <span
                     className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full text-[.65rem] font-black animate-pulse"
                     style={{ background: '#ef4444', color: '#fff', boxShadow: '0 0 0 3px rgba(239,68,68,.2)' }}
                   >
-                    {value > 99 ? '99+' : value}
+                    {typeof value === 'number' && value > 99 ? '99+' : value}
                   </span>
                 )}
               </div>
@@ -180,7 +191,7 @@ export default function AdminDashboard() {
           <Link to="/admin/posts" className="btn-ghost text-sm">Xem tất cả</Link>
         </div>
         <div className="space-y-3">
-          {recentPosts.map((post: any) => (
+          {(recentPosts as RecentPost[]).map(post => (
             <div key={post.id} className="flex items-center gap-4 p-3 rounded-xl hover:bg-white/5 transition-colors">
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold truncate">{post.title}</p>

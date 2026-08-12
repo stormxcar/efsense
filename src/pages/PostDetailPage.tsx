@@ -15,6 +15,7 @@ import { formatDate, readingTime, formatNumber, SERIES_COLORS, SERIES_ICONS, cn,
 import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
 import { saveReadingHistory } from '@/utils/history'
+import { sanitizeHtml } from '@/utils/sanitizeHtml'
 import SocialShare from '@/components/SocialShare'
 import ReadingProgress from '@/components/ReadingProgress'
 import type { PostWithDetails } from '@/types/database'
@@ -25,6 +26,8 @@ type PostInteractions = {
   isLiked: boolean
   isBookmarked: boolean
 }
+type PostTagJoin = { tag: { id: string; name: string; slug: string } | null }
+type PostDetail = PostWithDetails & { post_tags?: PostTagJoin[] }
 
 export default function PostDetailPage() {
   const { slug } = useParams<{ slug: string }>()
@@ -166,10 +169,11 @@ export default function PostDetailPage() {
     </div>
   )
 
-  const seriesSlug = (post as any).series?.slug ?? ''
+  const detailPost = post as PostDetail
+  const seriesSlug = detailPost.series?.slug ?? ''
   const badgeClass = SERIES_COLORS[seriesSlug] ?? 'badge-blue'
   const seriesIcon = SERIES_ICONS[seriesSlug] ?? '📰'
-  const tags = (post as any).post_tags?.map((pt: any) => pt.tag) ?? []
+  const tags = detailPost.post_tags?.flatMap(item => item.tag ? [item.tag] : []) ?? []
 
   return (
     <>
@@ -184,10 +188,10 @@ export default function PostDetailPage() {
         </div>
 
         {/* Series badge */}
-        {(post as any).series && (
-          <Link to={`/series/${(post as any).series.slug}`}>
+        {detailPost.series && (
+          <Link to={`/series/${detailPost.series.slug}`}>
             <span className={cn('badge text-sm mb-4 inline-flex', badgeClass)}>
-              {seriesIcon} {(post as any).series.name}
+              {seriesIcon} {detailPost.series.name}
             </span>
           </Link>
         )}
@@ -203,17 +207,17 @@ export default function PostDetailPage() {
         {/* Meta row */}
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mb-8 pb-8 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
           <div className="flex items-center gap-2">
-            {(post as any).author?.avatar ? (
-              <img src={(post as any).author.avatar} alt={(post as any).author.username} className="w-10 h-10 rounded-lg object-cover" />
+            {detailPost.author?.avatar ? (
+              <img src={detailPost.author.avatar} alt={detailPost.author.username} className="w-10 h-10 rounded-lg object-cover" />
             ) : (
               <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold"
                 style={{ background: 'var(--accent)', color: 'var(--accent-ink)' }}>
-                {getInitials((post as any).author?.username ?? '?')}
+                {getInitials(detailPost.author?.username ?? '?')}
               </div>
             )}
             <div>
-              <p className="text-sm font-semibold">{(post as any).author?.username ?? 'Ban biên tập'}</p>
-              {(post as any).author?.bio && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{(post as any).author.bio}</p>}
+              <p className="text-sm font-semibold">{detailPost.author?.username ?? 'Ban biên tập'}</p>
+              {detailPost.author?.bio && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{detailPost.author.bio}</p>}
             </div>
           </div>
           <div className="flex items-center gap-4 text-sm" style={{ color: 'var(--text-muted)' }}>
@@ -244,7 +248,7 @@ export default function PostDetailPage() {
         {/* Content rendered from Quill HTML */}
         <div
           className="ql-content prose-football mb-10"
-          dangerouslySetInnerHTML={{ __html: post.content ?? '' }}
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(post.content ?? '') }}
         />
         <PostGallery images={(post as PostWithDetails).post_gallery_images ?? []} />
 
@@ -252,7 +256,7 @@ export default function PostDetailPage() {
         {tags.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 mb-8">
             <Tag size={15} style={{ color: 'var(--text-muted)' }} />
-            {tags.map((tag: any) => (
+            {tags.map(tag => (
               <Link key={tag.id} to={`/search?tag=${tag.slug}`}>
                 <span className="badge badge-blue text-xs hover:scale-105 transition-transform">#{tag.name}</span>
               </Link>
@@ -294,7 +298,7 @@ export default function PostDetailPage() {
           <section className="mt-16">
             <h3 className="section-heading"><BookOpen size={22} /> Cùng chuyên đề</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-              {related.map((rp: any) => <PostCard key={rp.id} post={rp} />)}
+              {(related as unknown as PostWithDetails[]).map(rp => <PostCard key={rp.id} post={rp} />)}
             </div>
           </section>
         )}

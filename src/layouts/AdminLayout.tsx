@@ -1,14 +1,17 @@
-import { Outlet, NavLink, useNavigate, Link } from 'react-router-dom'
+import { Outlet, NavLink, useNavigate, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import {
   LayoutDashboard, FileText, Layers, Users, MessageSquare,
-  Flag, ChevronLeft, Shield, PanelLeftClose, PanelLeftOpen
+  Flag, ChevronLeft, Shield, PanelLeftClose, PanelLeftOpen, History, ClipboardList, ShieldAlert, CalendarDays, HardDrive, ShieldCheck
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
 
 export default function AdminLayout() {
-  const { user, isAdmin, isLoading } = useAuth()
+  const { user, isStaff, canEditContent, canModerateContent, isLoading } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const [mfaRequired, setMfaRequired] = useState(false)
   const [collapsed, setCollapsed] = useState(() => {
     const saved = localStorage.getItem('admin-sidebar-collapsed')
     return saved === null ? window.matchMedia('(max-width: 767px)').matches : saved === 'true'
@@ -23,10 +26,30 @@ export default function AdminLayout() {
   }
 
   useEffect(() => {
-    if (!isLoading && (!user || !isAdmin)) {
+    if (!isLoading && (!user || !isStaff)) {
       navigate('/', { replace: true })
     }
-  }, [user, isAdmin, isLoading, navigate])
+  }, [user, isStaff, isLoading, navigate])
+
+  useEffect(() => {
+    if (!user || user.role !== 'admin') return
+    const checkMfa = async () => {
+      const [{ data: assurance }, { data: factors }] = await Promise.all([
+        supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
+        supabase.auth.mfa.listFactors(),
+      ])
+      const hasVerifiedFactor = (factors?.totp ?? []).some(factor => factor.status === 'verified')
+      setMfaRequired(Boolean(hasVerifiedFactor && assurance?.currentLevel !== 'aal2'))
+    }
+    void checkMfa()
+    const refresh = () => { void checkMfa() }
+    window.addEventListener('football-stories-mfa-verified', refresh)
+    return () => window.removeEventListener('football-stories-mfa-verified', refresh)
+  }, [user])
+
+  useEffect(() => {
+    if (mfaRequired && location.pathname !== '/admin/security') navigate('/admin/security', { replace: true })
+  }, [mfaRequired, location.pathname, navigate])
 
   if (isLoading) {
     return (
@@ -45,16 +68,26 @@ export default function AdminLayout() {
     )
   }
 
-  if (!user || !isAdmin) return null
+  if (!user || !isStaff) return null
 
   const navItems = [
     { to: '/admin', label: 'Tổng quan', Icon: LayoutDashboard },
     { to: '/admin/posts', label: 'Bài viết', Icon: FileText },
     { to: '/admin/series', label: 'Chuyên đề', Icon: Layers },
-    { to: '/admin/users', label: 'Người dùng', Icon: Users },
-    { to: '/admin/comments', label: 'Bình luận', Icon: MessageSquare },
-    { to: '/admin/reports', label: 'Báo cáo', Icon: Flag },
+    ...(user.role === 'admin' ? [{ to: '/admin/users', label: 'Người dùng', Icon: Users }] : []),
+    ...(user.role === 'admin' || user.role === 'moderator' ? [{ to: '/admin/comments', label: 'Bình luận', Icon: MessageSquare }, { to: '/admin/reports', label: 'Báo cáo', Icon: Flag }] : []),
+    { to: '/admin/timeline', label: 'Dòng thời gian', Icon: History },
+    { to: '/admin/calendar', label: 'Lịch biên tập', Icon: CalendarDays },
+    { to: '/admin/media-library', label: 'Thư viện media', Icon: HardDrive },
+    ...(user.role === 'admin' ? [{ to: '/admin/audit-log', label: 'Nhật ký quản trị', Icon: ClipboardList }] : []),
+    ...(user.role === 'admin' || user.role === 'moderator' ? [{ to: '/admin/moderation', label: 'Hàng đợi kiểm duyệt', Icon: ShieldAlert }] : []),
+    ...(user.role === 'admin' ? [{ to: '/admin/security', label: 'Bảo mật 2FA', Icon: ShieldCheck }] : []),
   ]
+  const visibleNavItems = navItems.filter(item => {
+    if (['/admin/posts', '/admin/series', '/admin/timeline', '/admin/calendar'].includes(item.to)) return canEditContent
+    if (['/admin/comments', '/admin/reports', '/admin/moderation'].includes(item.to)) return canModerateContent
+    return true
+  })
 
   return (
     <div className="min-h-screen flex" style={{ background: 'var(--bg-primary)' }}>
@@ -85,7 +118,7 @@ export default function AdminLayout() {
         </div>
 
         <nav className={`${collapsed ? 'px-2' : 'px-3'} flex-1 py-4 space-y-1`}>
-          {navItems.map(({ to, label, Icon }) => (
+          {visibleNavItems.map(({ to, label, Icon }) => (
             <NavLink
               key={to}
               to={to}

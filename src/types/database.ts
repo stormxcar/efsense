@@ -1,17 +1,12 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
-// Generic helper – avoids repeat of Row/Insert/Update pattern issues
-type RowOf<T> = T
-type InsertOf<T> = Partial<T>
-type UpdateOf<T> = Partial<T>
-
 // ---- Raw Row types ----
 export interface UserRow {
   id: string
   email: string
   username: string
   avatar: string | null
-  role: 'admin' | 'user'
+  role: 'admin' | 'editor' | 'moderator' | 'contributor' | 'user'
   status: 'active' | 'suspended' | 'banned'
   bio: string | null
   created_at: string
@@ -123,6 +118,50 @@ export interface ReportRow {
   created_at: string
 }
 
+export interface CommunityPostRow {
+  id: string
+  author_id: string
+  post_type: 'discussion' | 'reel' | 'showcase'
+  title: string | null
+  content: string
+  media_url: string | null
+  media_public_id: string | null
+  media_type: 'image' | 'video' | null
+  thumbnail_url: string | null
+  game_version: string | null
+  tactic: string | null
+  status: 'published' | 'pending' | 'hidden'
+  created_at: string
+  updated_at: string
+}
+
+export interface CommunityCommentRow {
+  id: string
+  post_id: string
+  user_id: string
+  parent_comment_id: string | null
+  content: string
+  status: 'visible' | 'hidden' | 'deleted'
+  created_at: string
+  updated_at: string
+}
+
+export interface HistoryTimelineEventRow {
+  id: string
+  year: number
+  era: string
+  title: string
+  description: string
+  accent_color: string
+  post_id: string | null
+  media_url: string | null
+  media_type: 'image' | 'video' | null
+  sort_order: number
+  status: 'draft' | 'published'
+  created_at: string
+  updated_at: string
+}
+
 // ---- Database type for Supabase client ----
 export interface Database {
   public: {
@@ -222,6 +261,26 @@ export interface Database {
         Insert: { ip_address: string; attempt_count?: number; blocked_until?: string | null }
         Update: { attempt_count?: number; blocked_until?: string | null }
       }
+      community_posts: {
+        Row: CommunityPostRow
+        Insert: Partial<CommunityPostRow>
+        Update: Partial<CommunityPostRow>
+      }
+      community_post_likes: {
+        Row: { post_id: string; user_id: string; created_at: string }
+        Insert: { post_id: string; user_id: string }
+        Update: Partial<{ post_id: string; user_id: string }>
+      }
+      community_post_comments: {
+        Row: CommunityCommentRow
+        Insert: Partial<CommunityCommentRow>
+        Update: Partial<CommunityCommentRow>
+      }
+      history_timeline_events: {
+        Row: HistoryTimelineEventRow
+        Insert: Partial<HistoryTimelineEventRow>
+        Update: Partial<HistoryTimelineEventRow>
+      }
     }
     Views: Record<string, never>
     Functions: {
@@ -251,4 +310,23 @@ export interface PostWithDetails extends PostRow {
 export interface CommentWithUser extends CommentRow {
   user?: UserRow | null
   replies?: CommentWithUser[]
+}
+
+export interface CommunityPostWithDetails extends CommunityPostRow {
+  author?: Pick<UserRow, 'id' | 'username' | 'avatar'> | null
+  likes?: { count: number }[]
+  comments?: { count: number }[]
+  community_post_likes?: { user_id: string }[]
+  community_post_comments?: { count: number }[]
+  likes_count?: number
+  comments_count?: number
+  is_liked?: boolean
+}
+
+export interface CommunityCommentWithUser extends CommunityCommentRow {
+  user?: Pick<UserRow, 'id' | 'username' | 'avatar'> | null
+}
+
+export interface HistoryTimelineEventWithPost extends HistoryTimelineEventRow {
+  post?: Pick<PostRow, 'id' | 'title' | 'slug'> | null
 }

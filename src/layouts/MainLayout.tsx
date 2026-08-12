@@ -11,7 +11,7 @@ export default function MainLayout() {
       <a href="#main-content" className="skip-link">Bỏ qua đến nội dung chính</a>
       <Header />
       <main id="main-content" className="flex-1">
-        <div key={location.pathname} className="route-enter">
+        <div key={`${location.pathname}${location.search}`} className="route-enter route-transition-shell">
           <Outlet />
         </div>
       </main>

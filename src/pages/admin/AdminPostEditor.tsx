@@ -12,6 +12,27 @@ import { uploadImageToCloudinary } from '@/lib/cloudinary'
 import GalleryEditor from '@/components/GalleryEditor'
 import { useUIStore } from '@/store'
 import { useProcessing } from '@/hooks/useProcessing'
+import { optionalHttpUrl, requiredText } from '@/utils/validation'
+import { sanitizeHtml } from '@/utils/sanitizeHtml'
+import type { SeriesRow, TagRow } from '@/types/database'
+
+function formatLocalDateTime(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function presetDate(preset: string) {
+  const date = new Date()
+  if (preset === 'one-hour') date.setHours(date.getHours() + 1)
+  if (preset === 'tomorrow-morning') { date.setDate(date.getDate() + 1); date.setHours(9, 0, 0, 0) }
+  if (preset === 'tomorrow-evening') { date.setDate(date.getDate() + 1); date.setHours(20, 0, 0, 0) }
+  if (preset === 'weekend') {
+    const daysUntilSaturday = (6 - date.getDay() + 7) % 7 || 7
+    date.setDate(date.getDate() + daysUntilSaturday)
+    date.setHours(9, 0, 0, 0)
+  }
+  return formatLocalDateTime(date)
+}
 
 const quillFormats = [
   'header', 'bold', 'italic', 'underline', 'strike',
@@ -56,6 +77,8 @@ export default function AdminPostEditor() {
   const [uploadingCover, setUploadingCover] = useState(false)
   const [coverInputMode, setCoverInputMode] = useState<'upload' | 'url'>('upload')
   const [coverUrlInput, setCoverUrlInput] = useState('')
+  const [coverPreview, setCoverPreview] = useState('')
+  const [schedulePreset, setSchedulePreset] = useState('')
 
   const uploadArticleImage = useCallback(async () => {
     const input = document.createElement('input')
@@ -69,9 +92,10 @@ export default function AdminPostEditor() {
         const result = await process('Đang tải ảnh nội dung lên Cloudinary...', () => uploadImageToCloudinary(file, 'football-stories/articles'))
         const editor = editorRef.current?.getEditor()
         if (!editor) return
-        const range = editor.getSelection(true)
+        const range = editor.getSelection(true) ?? { index: Math.max(0, editor.getLength() - 1), length: 0 }
         editor.insertEmbed(range.index, 'image', result.secure_url, 'user')
         editor.setSelection(range.index + 1)
+        window.requestAnimationFrame(() => setForm(current => ({ ...current, content: editor.root.innerHTML })))
         toast.success('Đã chèn ảnh vào bài viết', { id: loadingToast })
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Không thể tải ảnh', { id: loadingToast })
@@ -96,6 +120,22 @@ export default function AdminPostEditor() {
     },
   }), [uploadArticleImage])
 
+  const handleEditorPaste = useCallback((event: React.ClipboardEvent<HTMLDivElement>) => {
+    const file = Array.from(event.clipboardData.files).find(item => item.type.startsWith('image/'))
+    if (!file) return
+    event.preventDefault()
+    void process('Đang tải ảnh đã dán lên Cloudinary...', async () => {
+      const result = await uploadImageToCloudinary(file, 'football-stories/articles')
+      const editor = editorRef.current?.getEditor()
+      if (!editor) return
+      const range = editor.getSelection(true) ?? { index: Math.max(0, editor.getLength() - 1), length: 0 }
+      editor.insertEmbed(range.index, 'image', result.secure_url, 'user')
+      editor.setSelection(range.index + 1)
+      window.requestAnimationFrame(() => setForm(current => ({ ...current, content: editor.root.innerHTML })))
+      toast.success('Đã tải ảnh dán lên Cloudinary')
+    }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : 'Không thể tải ảnh đã dán'))
+  }, [process])
+
   // Load existing post if editing
   useQuery({
     queryKey: ['post-edit', id],
@@ -115,7 +155,7 @@ export default function AdminPostEditor() {
           image_credit: data.image_credit ?? '',
           image_source_url: data.image_source_url ?? '',
           series_id: data.series_id ?? '',
-          status: data.status as any,
+          status: data.status as 'draft' | 'published' | 'scheduled',
           featured: data.featured,
           meta_title: data.meta_title ?? '',
           meta_desc: data.meta_desc ?? '',
@@ -124,8 +164,9 @@ export default function AdminPostEditor() {
           club_id: data.club_id ?? '',
           player_id: data.player_id ?? '',
           season_id: data.season_id ?? '',
-          tagIds: data.post_tags?.map((pt: any) => pt.tag_id) ?? [],
+          tagIds: data.post_tags?.map((pt: { tag_id: string }) => pt.tag_id) ?? [],
         })
+        if (data.scheduled_at) setSchedulePreset('custom')
         if (data.cover_image) setCoverUrlInput(data.cover_image)
       }
       return data
@@ -154,10 +195,14 @@ export default function AdminPostEditor() {
   const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    const localUrl = URL.createObjectURL(file)
+    setCoverPreview(localUrl)
     setUploadingCover(true)
     try {
       const result = await process('Đang tải ảnh bìa lên Cloudinary...', () => uploadImageToCloudinary(file, 'football-stories/covers'))
       setForm(f => ({ ...f, cover_image: result.secure_url }))
+      URL.revokeObjectURL(localUrl)
+      setCoverPreview('')
       setCoverUrlInput(result.secure_url)
       toast.success('Đã lưu ảnh bìa trên Cloudinary')
     } catch (error) {
@@ -171,10 +216,12 @@ export default function AdminPostEditor() {
   // Cover via URL
   const handleCoverUrl = async () => {
     if (!coverUrlInput.trim()) return
+    setCoverPreview(coverUrlInput.trim())
     setUploadingCover(true)
     try {
       const result = await process('Đang sao chép ảnh URL vào Cloudinary...', () => uploadImageToCloudinary(coverUrlInput, 'football-stories/covers'))
       setForm(f => ({ ...f, cover_image: result.secure_url }))
+      setCoverPreview('')
       setCoverUrlInput(result.secure_url)
       toast.success('Đã sao chép ảnh URL vào Cloudinary')
     } catch (error) {
@@ -201,19 +248,35 @@ export default function AdminPostEditor() {
   }, [])
 
   const handleSubmit = async (status: 'draft' | 'published' | 'scheduled') => {
-    if (!user || !form.title.trim()) {
-      toast.error('Tiêu đề là bắt buộc')
+    if (!user) return toast.error('Phiên đăng nhập đã hết hạn')
+    let validatedTitle: string
+    let validatedSlug: string
+    let validatedContent: string
+    try {
+      validatedTitle = requiredText(form.title, 'Tiêu đề', 8, 180)
+      validatedSlug = form.slug.trim().toLowerCase()
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(validatedSlug) || validatedSlug.length > 180) throw new Error('Slug chỉ được dùng chữ thường, số và dấu gạch ngang')
+      validatedContent = form.content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+      if (status === 'published' && validatedContent.length < 80) throw new Error('Bài viết xuất bản cần ít nhất 80 ký tự nội dung')
+      if (form.excerpt.length > 320) throw new Error('Mô tả ngắn không được vượt quá 320 ký tự')
+      if (form.meta_title.length > 70 || form.meta_desc.length > 160) throw new Error('Tiêu đề SEO tối đa 70 ký tự, mô tả SEO tối đa 160 ký tự')
+      if (form.cover_image) optionalHttpUrl(form.cover_image, 'Ảnh bìa')
+      if (form.image_source_url) optionalHttpUrl(form.image_source_url, 'Nguồn ảnh')
+      if (status === 'scheduled') {
+        if (!form.scheduled_at) throw new Error('Vui lòng chọn thời gian xuất bản')
+        if (new Date(form.scheduled_at).getTime() <= Date.now()) throw new Error('Thời gian xuất bản phải ở tương lai')
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Dữ liệu bài viết chưa hợp lệ')
       return
     }
     setSaving(true)
     startProcessing(status === 'published' ? 'Đang xuất bản bài viết...' : status === 'scheduled' ? 'Đang lên lịch bài viết...' : 'Đang lưu bản nháp...')
     try {
-      if (status === 'scheduled' && !form.scheduled_at) {
-        toast.error('Vui lòng chọn thời gian xuất bản')
-        return
-      }
       const payload = {
         ...form,
+        title: validatedTitle,
+        slug: validatedSlug,
         status,
         scheduled_at: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
         author_id: user.id,
@@ -233,8 +296,8 @@ export default function AdminPostEditor() {
       await qc.invalidateQueries({ queryKey: ['admin-recent-posts'] })
       toast.success(status === 'published' ? 'Đã xuất bản bài viết' : status === 'scheduled' ? 'Đã lên lịch xuất bản' : 'Đã lưu bản nháp')
       navigate('/admin/posts')
-    } catch (err: any) {
-      toast.error(err.message ?? 'Không thể lưu bài viết')
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Không thể lưu bài viết')
     } finally {
       setSaving(false)
       stopProcessing()
@@ -280,7 +343,7 @@ export default function AdminPostEditor() {
           {/* Rich Text Editor */}
           <div>
             <label className="block text-sm font-medium mb-2">Nội dung</label>
-            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-color)' }}>
+            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-color)' }} onPaste={handleEditorPaste}>
               <ReactQuill
                 ref={editorRef}
                 theme="snow"
@@ -292,6 +355,7 @@ export default function AdminPostEditor() {
                 placeholder="Viết nội dung bài... Ảnh chèn từ thanh công cụ sẽ được lưu trên Cloudinary."
               />
             </div>
+            {form.content && /<img\b/i.test(form.content) && <div className="mt-4 rounded-xl border p-4" style={{ borderColor: 'var(--border-color)' }}><p className="text-xs font-semibold mb-3" style={{ color: 'var(--text-muted)' }}>Xem trước nội dung đã chèn ảnh</p><div className="ql-content prose-football" dangerouslySetInnerHTML={{ __html: sanitizeHtml(form.content) }} /></div>}
           </div>
 
           {/* SEO */}
@@ -338,13 +402,21 @@ export default function AdminPostEditor() {
               Lưu bản nháp
             </button>
             <label className="block text-xs font-semibold pt-2">Thời gian xuất bản</label>
-            <input
+            <select value={schedulePreset} onChange={event => { const preset = event.target.value; setSchedulePreset(preset); if (preset && preset !== 'custom') setForm(current => ({ ...current, scheduled_at: presetDate(preset) })) }} className="input text-sm">
+              <option value="">Chọn nhanh thời gian</option>
+              <option value="one-hour">Sau 1 giờ</option>
+              <option value="tomorrow-morning">Ngày mai lúc 09:00</option>
+              <option value="tomorrow-evening">Ngày mai lúc 20:00</option>
+              <option value="weekend">Thứ bảy tuần này lúc 09:00</option>
+              <option value="custom">Tự chọn ngày và giờ</option>
+            </select>
+            {schedulePreset === 'custom' && <input
               type="datetime-local"
               value={form.scheduled_at}
-              min={new Date().toISOString().slice(0, 16)}
+              min={formatLocalDateTime(new Date())}
               onChange={event => setForm(current => ({ ...current, scheduled_at: event.target.value }))}
               className="input text-sm"
-            />
+            />}
             <button
               onClick={() => handleSubmit('scheduled')}
               disabled={saving || !form.title || !form.scheduled_at}
@@ -378,10 +450,11 @@ export default function AdminPostEditor() {
               </button>
             </div>
 
-            {form.cover_image ? (
+            {(form.cover_image || coverPreview || coverUrlInput) ? (
               <div className="relative">
-                <img src={form.cover_image} alt="cover" className="w-full rounded-xl object-cover h-32" />
-                <button onClick={() => { setForm(f => ({ ...f, cover_image: '' })); setCoverUrlInput('') }}
+                <img src={form.cover_image || coverPreview || coverUrlInput} alt="Xem trước ảnh bìa" className="w-full rounded-xl object-cover h-32" />
+                {uploadingCover && <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/45 text-xs text-white">Đang lưu lên Cloudinary...</span>}
+                <button onClick={() => { setForm(f => ({ ...f, cover_image: '' })); setCoverUrlInput(''); if (coverPreview.startsWith('blob:')) URL.revokeObjectURL(coverPreview); setCoverPreview('') }}
                   className="absolute top-2 right-2 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center hover:bg-red-600">
                   <X size={12} className="text-white" />
                 </button>
@@ -426,7 +499,7 @@ export default function AdminPostEditor() {
             <select value={form.series_id} onChange={e => setForm(f => ({ ...f, series_id: e.target.value }))}
               className="input text-sm">
               <option value="">Không có chuyên đề</option>
-              {(seriesList as any[]).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {(seriesList as SeriesRow[]).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
 
@@ -452,7 +525,7 @@ export default function AdminPostEditor() {
           <div className="card p-5">
             <label className="block font-semibold text-sm mb-3">Thẻ nội dung</label>
             <div className="flex flex-wrap gap-2 mb-3">
-              {(tags as any[]).map((tag: any) => (
+              {(tags as TagRow[]).map(tag => (
                 <button
                   key={tag.id}
                   onClick={() => setForm(f => ({

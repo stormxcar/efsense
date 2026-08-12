@@ -10,6 +10,7 @@ import toast from 'react-hot-toast'
 import { useNavigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useProcessing } from '@/hooks/useProcessing'
+import type { PostWithDetails, SeriesRow } from '@/types/database'
 
 export default function ProfilePage() {
   const { user, isLoading } = useAuth()
@@ -19,13 +20,18 @@ export default function ProfilePage() {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({ username: '', bio: '' })
   const [saving, setSaving] = useState(false)
+  const [avatarPreview, setAvatarPreview] = useState('')
   const [activeTab, setActiveTab] = useState<'bookmarks' | 'likes' | 'follows'>('bookmarks')
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!isLoading && !user) navigate('/login')
     if (user) setForm({ username: user.username, bio: user.bio ?? '' })
-  }, [user, isLoading])
+  }, [user, isLoading, navigate])
+
+  useEffect(() => () => {
+    if (avatarPreview.startsWith('blob:')) URL.revokeObjectURL(avatarPreview)
+  }, [avatarPreview])
 
   const { data: bookmarks = [] } = useQuery({
     queryKey: ['bookmarks', user?.id],
@@ -71,6 +77,8 @@ export default function ProfilePage() {
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !user) return
+    const previewUrl = URL.createObjectURL(file)
+    setAvatarPreview(previewUrl)
     try {
       await process('Đang cập nhật ảnh đại diện...', async () => {
         const url = await uploadAvatar(file, user.id)
@@ -112,8 +120,8 @@ export default function ProfilePage() {
       <div className="card p-8 mb-8">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
           <div className="relative">
-            {user.avatar ? (
-              <img src={user.avatar} alt={user.username} className="w-24 h-24 rounded-2xl object-cover" />
+            {avatarPreview || user.avatar ? (
+              <img src={avatarPreview || user.avatar || ''} alt={user.username} className="w-24 h-24 rounded-2xl object-cover" />
             ) : (
               <div className="w-24 h-24 rounded-2xl flex items-center justify-center text-2xl font-bold"
                 style={{ background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)' }}>
@@ -209,7 +217,7 @@ export default function ProfilePage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            {bookmarks.map((post: any) => post && <PostCard key={post.id} post={post} />)}
+            {(bookmarks as unknown as Array<PostWithDetails | null>).map(post => post && <PostCard key={post.id} post={post} />)}
           </div>
         )
       )}
@@ -222,7 +230,7 @@ export default function ProfilePage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            {likedPosts.map((post: any) => post && <PostCard key={post.id} post={post} />)}
+            {(likedPosts as unknown as Array<PostWithDetails | null>).map(post => post && <PostCard key={post.id} post={post} />)}
           </div>
         )
       )}
@@ -235,10 +243,10 @@ export default function ProfilePage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {followed.map((series: any) => series && (
+            {(followed as unknown as Array<SeriesRow | null>).map(series => series && (
               <a key={series.id} href={`/series/${series.slug}`}
                 className="card p-5 flex items-center gap-4 hover:border-blue-500/30">
-                <span className="text-3xl">{({ 'tactical-analysis': '🎯', 'football-legends': '⭐', 'club-history': '🏛️', 'world-cup-stories': '🏆' } as any)[series.slug] ?? '📰'}</span>
+                <span className="text-3xl">{({ 'tactical-analysis': '🎯', 'football-legends': '⭐', 'club-history': '🏛️', 'world-cup-stories': '🏆' } as Record<string, string>)[series.slug] ?? '📰'}</span>
                 <div>
                   <p className="font-semibold">{series.name}</p>
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{series.description}</p>

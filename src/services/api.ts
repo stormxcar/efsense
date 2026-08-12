@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
-import { uploadImageToCloudinary } from '@/lib/cloudinary'
-import type { UserRow } from '@/types/database'
+import { uploadImageToCloudinary, uploadVideoToCloudinary } from '@/lib/cloudinary'
+import type { CommunityCommentWithUser, CommunityPostWithDetails, HistoryTimelineEventWithPost, UserRow } from '@/types/database'
 
 // ---- AUTH SERVICES ----
 
@@ -29,6 +29,12 @@ export async function signIn(email: string, password: string) {
 
 export async function signOut() {
   return supabase.auth.signOut()
+}
+
+export async function createManagedUser(input: { email: string; password: string; username: string; role: 'user' | 'admin' | 'editor' | 'moderator' | 'contributor' }) {
+  const { data, error } = await supabase.functions.invoke('admin-create-user', { body: input })
+  if (error || data?.error) return { data: null, error: new Error(data?.error ?? error?.message ?? 'Không thể tạo người dùng') }
+  return { data, error: null }
 }
 
 export async function getCurrentUser(): Promise<UserRow | null> {
@@ -68,7 +74,8 @@ export async function fetchPosts({
   let query = supabase
     .from('posts')
     .select(`
-      *,
+      id, title, slug, excerpt, cover_image, author_id, series_id, status, view_count, featured,
+      image_alt, published_at, created_at, updated_at,
       author:users!posts_author_id_fkey(id, username, avatar),
       series:series(id, name, slug),
       likes(count),
@@ -148,6 +155,7 @@ export async function createPost(post: {
   club_id?: string
   player_id?: string
   season_id?: string
+  published_at?: string | null
 }) {
   const { tagIds, ...postData } = post
   const normalizedPostData = {
@@ -176,7 +184,7 @@ export async function createPost(post: {
 export async function updatePost(id: string, updates: Parameters<typeof createPost>[0]) {
   const { tagIds, ...postData } = updates
   if (postData.status === 'published' && !('published_at' in postData)) {
-    (postData as any).published_at = new Date().toISOString()
+    postData.published_at = new Date().toISOString()
   }
   const normalizedPostData = {
     ...postData,
@@ -198,6 +206,25 @@ export async function updatePost(id: string, updates: Parameters<typeof createPo
 
 export async function deletePost(id: string) {
   return supabase.from('posts').delete().eq('id', id)
+}
+
+export async function updatePostsBulk(ids: string[], status: 'draft' | 'published') {
+  return supabase.from('posts').update({ status, published_at: status === 'published' ? new Date().toISOString() : null }).in('id', ids)
+}
+
+export async function fetchPostRevisions(postId: string) {
+  return supabase.from('post_revisions').select('*').eq('post_id', postId).order('version', { ascending: false })
+}
+
+export async function restorePostRevision(revision: { post_id: string; title: string; slug: string; excerpt: string | null; content: string | null; cover_image: string | null; status: string }) {
+  return supabase.from('posts').update({
+    title: revision.title,
+    slug: revision.slug,
+    excerpt: revision.excerpt,
+    content: revision.content,
+    cover_image: revision.cover_image,
+    status: revision.status === 'published' ? 'draft' : revision.status,
+  }).eq('id', revision.post_id).select().single()
 }
 
 // ---- SERIES SERVICES ----
@@ -362,6 +389,129 @@ export async function createTag(name: string, slug: string) {
   return supabase.from('tags').insert({ name, slug }).select().single()
 }
 
+// ---- eFOOTBALL COMMUNITY ----
+
+export async function fetchCommunityPosts({
+  page = 1,
+  limit = 12,
+  type = 'all',
+}: { page?: number; limit?: number; type?: 'all' | 'discussion' | 'reel' | 'showcase' } = {}) {
+  let query = supabase
+    .from('community_posts')
+    .select(`
+      *,
+      author:users!community_posts_author_id_fkey(id, username, avatar),
+      likes:community_post_likes(count),
+      comments:community_post_comments(count)
+    `, { count: 'exact' })
+    .eq('status', 'published')
+    .order('created_at', { ascending: false })
+    .range((page - 1) * limit, page * limit - 1)
+
+  if (type !== 'all') query = query.eq('post_type', type)
+  return query as unknown as Promise<{ data: CommunityPostWithDetails[] | null; error: Error | null; count: number | null }>
+}
+
+export async function createCommunityPost(data: {
+  author_id: string
+  post_type: 'discussion' | 'reel' | 'showcase'
+  title?: string | null
+  content: string
+  media_url?: string | null
+  media_public_id?: string | null
+  media_type?: 'image' | 'video' | null
+  thumbnail_url?: string | null
+  game_version?: string | null
+  tactic?: string | null
+}) {
+  return supabase.from('community_posts').insert({
+    ...data,
+    title: data.title?.trim() || null,
+    media_url: data.media_url || null,
+    media_public_id: data.media_public_id || null,
+    media_type: data.media_type || null,
+    game_version: data.game_version?.trim() || null,
+    tactic: data.tactic?.trim() || null,
+    status: 'published',
+  }).select(`*, author:users!community_posts_author_id_fkey(id, username, avatar)`).single()
+}
+
+export async function fetchCommunityComments(postId: string) {
+  const { data, error } = await supabase
+    .from('community_post_comments')
+    .select('*, user:users(id, username, avatar)')
+    .eq('post_id', postId)
+    .eq('status', 'visible')
+    .order('created_at', { ascending: true })
+
+  return { data: (data ?? []) as unknown as CommunityCommentWithUser[], error }
+}
+
+export async function createCommunityComment(data: {
+  post_id: string
+  user_id: string
+  content: string
+  parent_comment_id?: string | null
+}) {
+  return supabase.from('community_post_comments').insert({
+    ...data,
+    content: data.content.trim(),
+    parent_comment_id: data.parent_comment_id ?? null,
+  }).select('*, user:users(id, username, avatar)').single()
+}
+
+export async function toggleCommunityLike(postId: string, userId: string, isLiked: boolean) {
+  if (isLiked) return supabase.from('community_post_likes').delete().eq('post_id', postId).eq('user_id', userId)
+  return supabase.from('community_post_likes').insert({ post_id: postId, user_id: userId })
+}
+
+export async function fetchCommunityLikeState(postId: string, userId?: string) {
+  const query = supabase.from('community_post_likes').select('post_id, user_id').eq('post_id', postId)
+  if (userId) query.eq('user_id', userId)
+  const { data, error } = await query
+  return { isLiked: (data?.length ?? 0) > 0, error }
+}
+
+export async function uploadCommunityMedia(source: File | string, mediaType: 'image' | 'video') {
+  const result = mediaType === 'video'
+    ? await uploadVideoToCloudinary(source, 'football-stories/community')
+    : await uploadImageToCloudinary(source, 'football-stories/community')
+  return {
+    url: result.secure_url,
+    publicId: result.public_id,
+    width: result.width,
+    height: result.height,
+    duration: result.duration,
+  }
+}
+
+// ---- HISTORY TIMELINE ----
+
+export async function fetchTimelineEvents(status?: 'draft' | 'published') {
+  let query = supabase
+    .from('history_timeline_events')
+    .select('*, post:posts(id, title, slug)')
+    .order('sort_order', { ascending: true })
+    .order('year', { ascending: true })
+  if (status) query = query.eq('status', status)
+  const result = await query
+  return { data: (result.data ?? []) as unknown as HistoryTimelineEventWithPost[], error: result.error }
+}
+
+export type TimelineEventInput = Omit<HistoryTimelineEventWithPost, 'id' | 'created_at' | 'updated_at' | 'post'>
+
+export async function createTimelineEvent(input: TimelineEventInput) {
+  return supabase.from('history_timeline_events').insert(input).select('*, post:posts(id, title, slug)').single()
+}
+
+export async function updateTimelineEvent(id: string, input: Partial<TimelineEventInput>) {
+  return supabase.from('history_timeline_events').update(input).eq('id', id).select('*, post:posts(id, title, slug)').single()
+}
+
+export async function deleteTimelineEvent(id: string) {
+  return supabase.from('history_timeline_events').delete().eq('id', id)
+}
+
 // ---- NOTIFICATIONS ----
 
 export async function fetchNotifications(userId: string, limit = 20) {
@@ -417,8 +567,26 @@ export async function updateUserStatus(id: string, status: 'active' | 'suspended
   return supabase.from('users').update({ status }).eq('id', id)
 }
 
-export async function updateUserRole(id: string, role: 'admin' | 'user') {
+export async function updateUserRole(id: string, role: 'admin' | 'editor' | 'moderator' | 'contributor' | 'user') {
   return supabase.from('users').update({ role }).eq('id', id)
+}
+
+export async function runAdminSecurityAction(action: 'lock' | 'unlock' | 'revoke_sessions', userId: string) {
+  const { data, error } = await supabase.functions.invoke('admin-security-actions', { body: { action, userId } })
+  if (error || data?.error) return { data: null, error: new Error(data?.error ?? error?.message ?? 'Không thể thực hiện thao tác bảo mật') }
+  return { data, error: null }
+}
+
+export async function fetchAuditLogs(limit = 100) {
+  return supabase.from('audit_logs').select('*, actor:users!audit_logs_actor_id_fkey(username, avatar)').order('created_at', { ascending: false }).limit(limit)
+}
+
+export async function fetchContentReports() {
+  return supabase.from('content_reports').select('*, reporter:users!content_reports_reporter_id_fkey(username, avatar)').order('created_at', { ascending: false })
+}
+
+export async function updateContentReport(id: string, status: 'reviewing' | 'resolved' | 'dismissed') {
+  return supabase.from('content_reports').update({ status, resolved_at: status === 'resolved' || status === 'dismissed' ? new Date().toISOString() : null }).eq('id', id)
 }
 
 export async function uploadAvatar(file: File, userId: string): Promise<string> {
@@ -447,6 +615,9 @@ export async function searchPosts(query: string, page = 1, limit = 10) {
 export function generateSlug(text: string): string {
   return text
     .toLowerCase()
+    .replace(/đ/g, 'd')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^\w\s-]/g, '')
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')

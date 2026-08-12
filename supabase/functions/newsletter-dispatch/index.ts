@@ -5,6 +5,16 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[character] ?? character)
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   const authorization = request.headers.get('Authorization')
@@ -33,6 +43,9 @@ Deno.serve(async (request) => {
   if (!post || !subscribers?.length) return new Response(JSON.stringify({ sent: 0 }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
   const siteUrl = Deno.env.get('SITE_URL') || 'https://footballstories.vn'
+  const safeTitle = escapeHtml(post.title)
+  const safeExcerpt = escapeHtml(post.excerpt || '')
+  const safeUrl = `${siteUrl.replace(/\/$/, '')}/posts/${encodeURIComponent(post.slug)}`
   let sent = 0
   for (let index = 0; index < subscribers.length; index += 50) {
     const batch = subscribers.slice(index, index + 50).map(item => item.email)
@@ -44,7 +57,7 @@ Deno.serve(async (request) => {
         to: [from],
         bcc: batch,
         subject: `Bài mới: ${post.title}`,
-        html: `<h1>${post.title}</h1><p>${post.excerpt || ''}</p><p><a href="${siteUrl}/posts/${post.slug}">Đọc bài viết</a></p>`,
+        html: `<h1>${safeTitle}</h1><p>${safeExcerpt}</p><p><a href="${safeUrl}">Đọc bài viết</a></p>`,
       }),
     })
     if (response.ok) sent += batch.length

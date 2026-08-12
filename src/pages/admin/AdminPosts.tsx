@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
-import { deletePost } from '@/services/api'
-import { PlusCircle, Edit2, Trash2, Eye, Search, Heart, MessageCircle } from 'lucide-react'
+import { deletePost, updatePostsBulk } from '@/services/api'
+import { PlusCircle, Edit2, Trash2, Eye, Search } from 'lucide-react'
 import { formatDate, formatNumber } from '@/utils'
 import Tooltip from '@/components/Tooltip'
 import toast from 'react-hot-toast'
+import type { PostRow } from '@/types/database'
 
 const PAGE_SIZE = 15
 
@@ -14,6 +15,7 @@ export default function AdminPosts() {
   const qc = useQueryClient()
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
+  const [selected, setSelected] = useState<string[]>([])
   const [filter, setFilter] = useState<'all' | 'published' | 'scheduled' | 'draft'>('all')
   const filterLabels = { all: 'Tất cả', published: 'Đã xuất bản', scheduled: 'Đã lên lịch', draft: 'Bản nháp' }
   const statusLabels = { published: 'Đã xuất bản', scheduled: 'Đã lên lịch', draft: 'Bản nháp' }
@@ -49,6 +51,15 @@ export default function AdminPosts() {
     mutationFn: (id: string) => deletePost(id).then(() => {}),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-posts'] }); toast.success('Đã xóa bài viết') },
   })
+  const bulkMutation = useMutation({
+    mutationFn: async (action: 'published' | 'draft' | 'delete') => {
+      if (!selected.length) throw new Error('Hãy chọn ít nhất một bài viết')
+      if (action === 'delete') { const result = await Promise.all(selected.map(id => deletePost(id))); const error = result.find(item => item.error)?.error; if (error) throw error }
+      else { const result = await updatePostsBulk(selected, action); if (result.error) throw result.error }
+    },
+    onSuccess: () => { setSelected([]); qc.invalidateQueries({ queryKey: ['admin-posts'] }); toast.success('Đã áp dụng thao tác hàng loạt') },
+    onError: (error: unknown) => toast.error(error instanceof Error ? error.message : 'Không thể xử lý hàng loạt'),
+  })
 
   return (
     <div className="p-8">
@@ -77,13 +88,14 @@ export default function AdminPosts() {
           </button>
         ))}
       </div>
+      {selected.length > 0 && <div className="card p-3 mb-4 flex flex-wrap items-center gap-2"><span className="text-sm">Đã chọn {selected.length} bài</span><button className="btn-primary text-xs" disabled={bulkMutation.isPending} onClick={() => bulkMutation.mutate('published')}>Xuất bản</button><button className="btn-secondary text-xs" disabled={bulkMutation.isPending} onClick={() => bulkMutation.mutate('draft')}>Chuyển bản nháp</button><button className="btn-ghost text-xs" disabled={bulkMutation.isPending} onClick={() => bulkMutation.mutate('delete')}>Xóa</button></div>}
 
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-                {['Tiêu đề', 'Tác giả', 'Chuyên đề', 'Trạng thái', 'Lượt xem', 'Ngày tạo', 'Thao tác'].map(h => (
+                {['', 'Tiêu đề', 'Tác giả', 'Chuyên đề', 'Trạng thái', 'Lượt xem', 'Ngày tạo', 'Thao tác'].map(h => (
                   <th key={h} className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{h}</th>
                 ))}
               </tr>
@@ -95,8 +107,9 @@ export default function AdminPosts() {
                     {[...Array(7)].map((_, j) => <td key={j} className="px-4 py-3"><div className="skeleton h-4 rounded" /></td>)}
                   </tr>
                 ))
-              ) : posts.map((post: any) => (
+              ) : (posts as Array<PostRow & { author?: { username?: string }; series?: { name?: string } }>).map(post => (
                 <tr key={post.id} className="border-b hover:bg-white/5 transition-colors" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+                  <td className="px-4 py-3"><input type="checkbox" checked={selected.includes(post.id)} onChange={event => setSelected(current => event.target.checked ? [...current, post.id] : current.filter(id => id !== post.id))} aria-label={`Chọn ${post.title}`} /></td>
                   <td className="px-4 py-3">
                     <p className="font-medium truncate max-w-xs">{post.title}</p>
                   </td>
@@ -121,6 +134,7 @@ export default function AdminPosts() {
                           <Edit2 size={13} />
                         </Link>
                       </Tooltip>
+                      <Tooltip content="Xem phiên bản cũ" placement="top"><Link to={`/admin/posts/${post.id}/revisions`} className="btn-ghost px-2 py-1 text-xs"><span className="sr-only">Phiên bản</span>↺</Link></Tooltip>
                       <Tooltip content="Xóa bài viết" placement="top">
                         <button onClick={() => { if (confirm('Bạn có chắc muốn xóa bài viết này?')) deleteMutation.mutate(post.id) }}
                           className="btn-ghost px-2 py-1 text-xs" style={{ color: '#f87171' }}>

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { TrendingUp, BookOpen, ArrowRight, ArrowLeft, Clock, Eye, Hash, Play } from 'lucide-react'
+import { TrendingUp, BookOpen, ArrowRight, ArrowLeft, Clock, Eye, Hash, Play, Users, Swords } from 'lucide-react'
 import { fetchPosts, fetchSeries, fetchTags } from '@/services/api'
 import PostCard, { PostCardSkeleton } from '@/components/PostCard'
 import { formatNumber, SERIES_ICONS } from '@/utils'
@@ -9,12 +9,13 @@ import type { PostWithDetails, SeriesRow, TagRow } from '@/types/database'
 import Reveal from '@/components/Reveal'
 import NewsTicker from '@/components/NewsTicker'
 import HeroTypewriter from '@/components/HeroTypewriter'
+import Magnetic from '@/components/Magnetic'
 
 export default function HomePage() {
   const [page, setPage] = useState(1)
-  const { data: featuredData, isLoading: loadingFeatured } = useQuery({
+  const { data: featuredPosts = [], isLoading: loadingFeatured } = useQuery({
     queryKey: ['posts', 'featured'],
-    queryFn: () => fetchPosts({ featured: true, limit: 1 }).then(r => r.data?.[0] ?? null),
+    queryFn: () => fetchPosts({ featured: true, limit: 3 }).then(r => (r.data ?? []) as unknown as PostWithDetails[]),
   })
   const { data: latestData, isLoading: loadingLatest } = useQuery({
     queryKey: ['posts', 'latest', page],
@@ -33,7 +34,7 @@ export default function HomePage() {
   })
   const { data: popularPosts = [] } = useQuery({
     queryKey: ['posts', 'popular'],
-    queryFn: () => fetchPosts({ limit: 5 }).then(r => ((r.data ?? []) as PostWithDetails[]).sort((a, b) => b.view_count - a.view_count)),
+    queryFn: () => fetchPosts({ limit: 5 }).then(r => ((r.data ?? []) as unknown as PostWithDetails[]).sort((a, b) => b.view_count - a.view_count)),
   })
 
   return (
@@ -62,18 +63,34 @@ export default function HomePage() {
             Chiến thuật, con người và lịch sử. Những câu chuyện dành cho người yêu bóng đá muốn hiểu sâu hơn.
           </p>
           <HeroTypewriter />
-          <Link to="/series" className="btn-primary">Khám phá chuyên đề <ArrowRight size={16} /></Link>
+          <Magnetic><Link to="/series" className="btn-primary">Khám phá chuyên đề <ArrowRight size={16} /></Link></Magnetic>
         </div>
       </section></Reveal>
       <NewsTicker />
+
+      <Reveal><section className="home-community-feature" aria-labelledby="home-community-title">
+        <div className="home-community-feature-art" aria-hidden="true"><Swords size={64} strokeWidth={1.2} /></div>
+        <div>
+          <p className="eyebrow"><Users size={14} /> Cộng đồng eFootball</p>
+          <h2 id="home-community-title">Không chỉ đọc meta.<br /><span>Hãy cùng tạo ra nó.</span></h2>
+          <p>Đăng đội hình, hỏi đáp chiến thuật, review cầu thủ và chia sẻ Reels trận đấu của bạn với cộng đồng eFootball Việt Nam.</p>
+          <Magnetic><Link to="/cong-dong" className="btn-primary">Khám phá trung tâm eFootball <ArrowRight size={15} /></Link></Magnetic>
+        </div>
+      </section></Reveal>
 
       <Reveal><section className="py-10 md:py-14">
         <div className="flex items-end justify-between gap-4 mb-6">
           <h2 className="section-heading mb-0">Câu chuyện nổi bật</h2>
           <span className="hidden sm:block text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>Ban biên tập lựa chọn</span>
         </div>
-        {loadingFeatured ? <div className="skeleton h-80 rounded-xl" /> : featuredData ? (
-          <PostCard post={featuredData as PostWithDetails} variant="featured" />
+        {loadingFeatured ? <div className="skeleton h-72 rounded-xl" /> : featuredPosts.length > 0 ? (
+          <div className={`featured-stories-layout ${featuredPosts.length === 1 ? 'is-single' : ''}`}>
+            <div className="featured-stories-lead"><PostCard post={featuredPosts[0]} variant="featured" /></div>
+            <aside className="featured-stories-rail">
+              <div className="featured-stories-rail-heading"><span>Đọc tiếp</span><small>Những góc nhìn đang mở</small></div>
+              {(featuredPosts.slice(1).length > 0 ? featuredPosts.slice(1) : (latestPosts as unknown as PostWithDetails[]).filter(post => post.id !== featuredPosts[0].id).slice(0, 2)).map(post => <PostCard key={post.id} post={post} variant="compact" />)}
+            </aside>
+          </div>
         ) : (
           <div className="py-16 border-y text-center" style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}>Bài viết nổi bật tiếp theo đang được biên tập.</div>
         )}
@@ -89,7 +106,7 @@ export default function HomePage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">{[...Array(6)].map((_, i) => <PostCardSkeleton key={i} />)}</div>
           ) : latestPosts.length ? (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-9">{(latestPosts as PostWithDetails[]).map((post, index) => <Reveal key={post.id} delay={(index % 2) * 80}><PostCard post={post} /></Reveal>)}</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-9">{(latestPosts as unknown as PostWithDetails[]).map((post, index) => <Reveal key={post.id} delay={(index % 2) * 80}><PostCard post={post} /></Reveal>)}</div>
               {latestPages > 1 && (
                 <nav className="flex justify-center gap-2 mt-10" aria-label="Phân trang bài viết mới">
                   <button className="pagination-button" disabled={page === 1} onClick={() => setPage(value => value - 1)} aria-label="Trang trước"><ArrowLeft size={16} /></button>
@@ -184,10 +201,10 @@ export default function HomePage() {
               <p className="eyebrow">Ảnh & Video</p>
               <h2>Nhịp đập sân cỏ, qua từng khung hình.</h2>
               <p>Một lát cắt thị giác về chiến thuật, lịch sử và cảm xúc phía sau trận đấu.</p>
-              <Link to="/media" className="btn-primary">Vào phòng hình ảnh <ArrowRight size={15} /></Link>
+              <Magnetic><Link to="/media" className="btn-primary">Vào phòng hình ảnh <ArrowRight size={15} /></Link></Magnetic>
             </div>
             <div className="home-media-images">
-              {(latestPosts as PostWithDetails[]).slice(0, 3).map((post, index) => (
+              {(latestPosts as unknown as PostWithDetails[]).slice(0, 3).map((post, index) => (
                 <Link key={post.id} to={`/posts/${post.slug}`} className={`home-media-image home-media-image-${index + 1}`}>
                   <img src={post.cover_image ?? ''} alt={post.title} loading="lazy" decoding="async" />
                   <span>{post.title}</span>

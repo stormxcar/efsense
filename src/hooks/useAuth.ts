@@ -16,7 +16,12 @@ async function bootstrapAuth() {
     const { data: { session } } = await supabase.auth.getSession()
     if (session?.user) {
       const profile = await getCurrentUser()
-      store.setUser(profile)
+      if (profile && profile.status !== 'active') {
+        await supabase.auth.signOut()
+        store.reset()
+      } else {
+        store.setUser(profile)
+      }
     } else {
       store.reset()
     }
@@ -35,7 +40,12 @@ async function bootstrapAuth() {
       if (event === 'SIGNED_IN' && session?.user) {
         try {
           const profile = await getCurrentUser()
-          s.setUser(profile)
+          if (profile && profile.status !== 'active') {
+            await supabase.auth.signOut()
+            s.reset()
+          } else {
+            s.setUser(profile)
+          }
         } catch {
           s.reset()
         }
@@ -55,7 +65,15 @@ export function useAuth() {
   const user = useAuthStore((s) => s.user)
   const isLoading = useAuthStore((s) => s.isLoading)
 
-  return { user, isLoading, isAdmin: user?.role === 'admin' }
+  return {
+    user,
+    isLoading,
+    isAdmin: user?.role === 'admin',
+    isStaff: Boolean(user && ['admin', 'editor', 'moderator', 'contributor'].includes(user.role)),
+    canEditContent: Boolean(user && ['admin', 'editor', 'contributor'].includes(user.role)),
+    canPublishContent: Boolean(user && ['admin', 'editor'].includes(user.role)),
+    canModerateContent: Boolean(user && ['admin', 'moderator'].includes(user.role)),
+  }
 }
 
 export function useUnreadNotifications(userId: string | undefined) {

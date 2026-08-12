@@ -21,8 +21,11 @@ Deno.serve(async (request) => {
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
   const auth = createClient(supabaseUrl, anonKey, { auth: { persistSession: false } })
 
-  const forwarded = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-  const ip = forwarded || request.headers.get('cf-connecting-ip') || 'unknown'
+  // Prefer platform-managed headers. If a proxy chain is present, the last
+  // address is the client address appended by the edge proxy, not a spoofed
+  // first value supplied by the caller.
+  const forwarded = request.headers.get('x-forwarded-for')?.split(',').map(value => value.trim()).filter(Boolean).at(-1)
+  const ip = request.headers.get('cf-connecting-ip') || request.headers.get('x-real-ip') || forwarded || 'unknown'
 
   try {
     const { email, password } = await request.json()

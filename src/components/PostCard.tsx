@@ -1,3 +1,4 @@
+import { type PointerEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Clock, Eye, MessageCircle, Heart, Flame, Sparkles } from 'lucide-react'
@@ -21,6 +22,18 @@ function isNew(post: PostWithDetails): boolean {
 /** Returns true if post is considered HOT */
 function isHot(post: PostWithDetails): boolean {
   return (post.likes_count ?? 0) >= 20 || post.view_count >= 500
+}
+
+function moveSpotlight(event: PointerEvent<HTMLAnchorElement>) {
+  if (event.pointerType === 'touch' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  const rect = event.currentTarget.getBoundingClientRect()
+  event.currentTarget.style.setProperty('--spotlight-x', `${event.clientX - rect.left}px`)
+  event.currentTarget.style.setProperty('--spotlight-y', `${event.clientY - rect.top}px`)
+}
+
+function resetSpotlight(event: PointerEvent<HTMLAnchorElement>) {
+  event.currentTarget.style.setProperty('--spotlight-x', '50%')
+  event.currentTarget.style.setProperty('--spotlight-y', '50%')
 }
 
 export default function PostCard({ post, variant = 'default' }: Props) {
@@ -81,7 +94,7 @@ export default function PostCard({ post, variant = 'default' }: Props) {
 
   if (variant === 'featured') {
     return (
-      <Link to={`/posts/${post.slug}`} {...intentProps} className="card group overflow-hidden relative grid md:grid-cols-[1.25fr_.75fr] min-h-80">
+      <Link to={`/posts/${post.slug}`} {...intentProps} onPointerMove={moveSpotlight} onPointerLeave={resetSpotlight} className="card spotlight-card group overflow-hidden relative grid md:grid-cols-[1.25fr_.75fr] min-h-80">
         <div className="overflow-hidden relative">
           {post.cover_image ? (
             <img
@@ -137,8 +150,8 @@ export default function PostCard({ post, variant = 'default' }: Props) {
               <Tooltip content={`${post.comments_count ?? 0} bình luận`} placement="top">
                 <span className="flex items-center gap-1"><MessageCircle size={12} /> {post.comments_count ?? 0}</span>
               </Tooltip>
-              <Tooltip content={post.content ? readingTime(post.content) : '3 phút đọc'} placement="top">
-                <span className="hidden md:flex items-center gap-1"><Clock size={12} /> {post.content ? readingTime(post.content) : '3 phút đọc'}</span>
+              <Tooltip content={post.content || post.excerpt ? readingTime(post.content ?? post.excerpt ?? '') : '3 phút đọc'} placement="top">
+                <span className="hidden md:flex items-center gap-1"><Clock size={12} /> {post.content || post.excerpt ? readingTime(post.content ?? post.excerpt ?? '') : '3 phút đọc'}</span>
               </Tooltip>
             </div>
           </div>
@@ -151,7 +164,7 @@ export default function PostCard({ post, variant = 'default' }: Props) {
   const fresh = isNew(post)
 
   return (
-    <Link to={`/posts/${post.slug}`} {...intentProps} className="card group overflow-hidden flex flex-col">
+    <Link to={`/posts/${post.slug}`} {...intentProps} onPointerMove={moveSpotlight} onPointerLeave={resetSpotlight} className="card spotlight-card group overflow-hidden flex flex-col">
       <div className="overflow-hidden relative">
         {post.cover_image ? (
           <img
@@ -215,9 +228,9 @@ export default function PostCard({ post, variant = 'default' }: Props) {
                 <MessageCircle size={11} /> {post.comments_count ?? 0}
               </span>
             </Tooltip>
-            <Tooltip content={post.content ? readingTime(post.content) : '3 phút đọc'} placement="top">
+            <Tooltip content={post.content || post.excerpt ? readingTime(post.content ?? post.excerpt ?? '') : '3 phút đọc'} placement="top">
               <span className="hidden sm:flex items-center gap-1 cursor-default">
-                <Clock size={11} /> {post.content ? readingTime(post.content) : '3 phút'}
+                <Clock size={11} /> {post.content || post.excerpt ? readingTime(post.content ?? post.excerpt ?? '') : '3 phút'}
               </span>
             </Tooltip>
           </div>

@@ -62,6 +62,7 @@ export default function Header() {
     { href: '/', label: 'Trang chủ' },
     { href: '/search', label: 'Khám phá' },
     { href: '/media', label: 'Ảnh & Video' },
+    { href: '/cong-dong', label: 'Cộng đồng eFootball' },
     { href: '/doc-nhieu-tuan-nay', label: 'Đọc nhiều' },
   ]
   const seriesLinks = [
@@ -105,6 +106,7 @@ export default function Header() {
               </Link>
               <div className="absolute left-0 top-full w-64 p-2 card opacity-0 invisible translate-y-2 group-hover:opacity-100 group-hover:visible group-hover:translate-y-0 group-focus-within:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 transition-all">
                 <Link to="/series" className="block px-3 py-2 text-sm font-bold rounded-md hover:bg-[var(--bg-hover)]">Tất cả chuyên đề</Link>
+                <Link to="/lich-su" className="block px-3 py-2 text-sm rounded-md hover:bg-[var(--bg-hover)]" style={{ color: 'var(--text-secondary)' }}>Dòng thời gian bóng đá</Link>
                 <div className="my-1 border-t" style={{ borderColor: 'var(--border-color)' }} />
                 {seriesLinks.map(item => <Link key={item.href} to={item.href} className="block px-3 py-2 text-sm rounded-md hover:bg-[var(--bg-hover)]" style={{ color: 'var(--text-secondary)' }}>{item.label}</Link>)}
               </div>
@@ -264,6 +266,7 @@ export default function Header() {
             ))}
             <div className="mt-2 pt-2 border-t" style={{ borderColor: 'var(--border-color)' }}>
               <Link to="/series" className="nav-link font-bold" onClick={() => setSidebarOpen(false)}>Tất cả chuyên đề</Link>
+              <Link to="/lich-su" className="nav-link pl-6 text-sm" onClick={() => setSidebarOpen(false)}>Dòng thời gian bóng đá</Link>
               {seriesLinks.map(item => <Link key={item.href} to={item.href} className="nav-link pl-6 text-sm" onClick={() => setSidebarOpen(false)}>{item.label}</Link>)}
             </div>
           </nav>

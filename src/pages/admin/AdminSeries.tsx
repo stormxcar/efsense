@@ -8,8 +8,18 @@ import { formatDate, SERIES_ICONS } from '@/utils'
 import type { SeriesRow } from '@/types/database'
 import toast from 'react-hot-toast'
 import CloudinaryImageField from '@/components/CloudinaryImageField'
+import { optionalHttpUrl, requiredText } from '@/utils/validation'
 
 const DEFAULT_FORM = { name: '', slug: '', description: '', thumbnail: '', status: 'draft' as 'draft' | 'published' }
+
+function validateSeriesForm(form: typeof DEFAULT_FORM) {
+  const name = requiredText(form.name, 'Tên chuyên đề', 2, 120)
+  const slug = form.slug.trim().toLowerCase()
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 120) throw new Error('Slug chỉ được dùng chữ thường, số và dấu gạch ngang')
+  const description = form.description.trim()
+  if (description.length > 500) throw new Error('Mô tả chuyên đề không được vượt quá 500 ký tự')
+  return { name, slug, description: description || undefined, thumbnail: optionalHttpUrl(form.thumbnail, 'Ảnh đại diện') ?? undefined, status: form.status }
+}
 
 export default function AdminSeries() {
   const qc = useQueryClient()
@@ -23,13 +33,14 @@ export default function AdminSeries() {
   })
 
   const createMutation = useMutation({
-    mutationFn: () => createSeries(form).then(() => {}),
+    mutationFn: () => createSeries(validateSeriesForm(form)).then(result => { if (result.error) throw result.error }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-series'] }); setShowNew(false); setForm(DEFAULT_FORM); toast.success('Đã tạo chuyên đề') },
-    onError: (err: any) => toast.error(err.message),
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : 'Không thể tạo chuyên đề'),
   })
 
   const updateMutation = useMutation({
-    mutationFn: () => updateSeries(editing!, form).then(() => {}),
+    mutationFn: () => updateSeries(editing!, validateSeriesForm(form)).then(result => { if (result.error) throw result.error }),
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : 'Không thể cập nhật chuyên đề'),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-series'] }); setEditing(null); toast.success('Đã cập nhật chuyên đề') },
   })
 
@@ -83,7 +94,7 @@ export default function AdminSeries() {
             </div>
             <div>
               <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Trạng thái</label>
-              <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as any }))}
+              <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as 'draft' | 'published' }))}
                 className="input text-sm">
                 <option value="draft">Bản nháp</option>
                 <option value="published">Đã xuất bản</option>
@@ -91,7 +102,7 @@ export default function AdminSeries() {
             </div>
           </div>
           <div className="flex gap-2 mt-4">
-            <button onClick={() => createMutation.mutate()} disabled={!form.name || createMutation.isPending}
+            <button onClick={() => createMutation.mutate()} disabled={createMutation.isPending}
               className="btn-primary text-sm flex items-center justify-center min-w-[120px]">
               {createMutation.isPending ? <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" /> : 'Lưu chuyên đề'}
             </button>
@@ -122,7 +133,7 @@ export default function AdminSeries() {
                     label="Ảnh đại diện chuyên đề"
                   />
                 </div>
-                <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as any }))}
+                <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as 'draft' | 'published' }))}
                   className="input text-sm">
                   <option value="draft">Bản nháp</option>
                   <option value="published">Đã xuất bản</option>

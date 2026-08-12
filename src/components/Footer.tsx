@@ -48,6 +48,8 @@ export default function Footer() {
               {[
                 { label: 'Kho bài viết', href: '/search' },
                 { label: 'Đọc nhiều tuần này', href: '/doc-nhieu-tuan-nay' },
+                { label: 'Dòng thời gian bóng đá', href: '/lich-su' },
+                { label: 'Cộng đồng eFootball', href: '/cong-dong' },
                 { label: 'Đăng nhập', href: '/login' },
                 { label: 'Đăng ký', href: '/register' },
               ].map(l => (

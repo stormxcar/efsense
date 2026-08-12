@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Image, Link as LinkIcon, UploadCloud, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { uploadImageToCloudinary, type CloudinaryFolder } from '@/lib/cloudinary'
@@ -15,13 +15,17 @@ export default function CloudinaryImageField({ value, onChange, folder, label = 
   const [mode, setMode] = useState<'file' | 'url'>('file')
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
+  const [localPreview, setLocalPreview] = useState('')
   const process = useProcessing()
 
   const upload = async (source: File | string) => {
+    if (source instanceof File) setLocalPreview(URL.createObjectURL(source))
+    else if (source.trim()) setLocalPreview(source.trim())
     setLoading(true)
     try {
       const result = await process('Đang lưu ảnh lên Cloudinary...', () => uploadImageToCloudinary(source, folder))
       onChange(result.secure_url)
+      setLocalPreview(result.secure_url)
       setUrl(result.secure_url)
       toast.success('Đã lưu ảnh trên Cloudinary')
     } catch (error) {
@@ -31,13 +35,18 @@ export default function CloudinaryImageField({ value, onChange, folder, label = 
     }
   }
 
+  useEffect(() => () => {
+    if (localPreview.startsWith('blob:')) URL.revokeObjectURL(localPreview)
+  }, [localPreview])
+
   return (
     <div>
       <label className="block text-xs font-semibold mb-2">{label}</label>
-      {value ? (
+      {(value || localPreview) ? (
         <div className="relative">
-          <img src={value} alt="" className="w-full h-36 object-cover rounded-lg" />
-          <button type="button" onClick={() => { onChange(''); setUrl('') }} className="absolute top-2 right-2 share-utility" aria-label="Xóa ảnh">
+          <img src={value || localPreview} alt="Xem trước hình ảnh" className="w-full h-36 object-cover rounded-lg" />
+          {loading && <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-xs text-white">Đang lưu lên Cloudinary...</span>}
+          <button type="button" onClick={() => { onChange(''); setUrl(''); setLocalPreview('') }} className="absolute top-2 right-2 share-utility" aria-label="Xóa ảnh">
             <X size={14} />
           </button>
         </div>

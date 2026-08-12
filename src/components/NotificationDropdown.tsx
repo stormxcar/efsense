@@ -16,6 +16,8 @@ const NOTIF_ICONS: Record<string, LucideIcon> = {
   post_comment: MessageSquare,
   post_like: Heart,
   post_share: Share2,
+  community_like: Heart,
+  community_comment: MessageSquare,
   admin_alert: Bell,
 }
 

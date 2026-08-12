@@ -18,6 +18,9 @@ export function formatRelativeDate(dateString: string): string {
 export function generateSlug(text: string): string {
   return text
     .toLowerCase()
+    .replace(/đ/g, 'd')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^\w\s-]/g, '')
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
