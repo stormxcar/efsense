@@ -8,6 +8,7 @@ import { formatNumber, SERIES_ICONS } from '@/utils'
 import type { PostWithDetails, SeriesRow, TagRow } from '@/types/database'
 import Reveal from '@/components/Reveal'
 import NewsTicker from '@/components/NewsTicker'
+import HeroTypewriter from '@/components/HeroTypewriter'
 
 export default function HomePage() {
   const [page, setPage] = useState(1)
@@ -60,6 +61,7 @@ export default function HomePage() {
           <p className="text-base md:text-lg leading-relaxed mb-6 max-w-[38ch]" style={{ color: 'var(--text-secondary)' }}>
             Chiến thuật, con người và lịch sử. Những câu chuyện dành cho người yêu bóng đá muốn hiểu sâu hơn.
           </p>
+          <HeroTypewriter />
           <Link to="/series" className="btn-primary">Khám phá chuyên đề <ArrowRight size={16} /></Link>
         </div>
       </section></Reveal>

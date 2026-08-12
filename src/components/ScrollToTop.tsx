@@ -11,6 +11,7 @@ export default function ScrollToTop() {
       rootMargin: '-560px 0px 0px 0px',
     })
     observer.observe(marker)
+
     return () => observer.disconnect()
   }, [])
 
@@ -22,7 +23,7 @@ export default function ScrollToTop() {
       aria-label="Cuộn lên đầu trang"
       title="Lên đầu trang"
     >
-      <ArrowUp size={19} />
+      <span className="scroll-top-inner"><ArrowUp size={18} /></span>
     </button>
   )
 }
