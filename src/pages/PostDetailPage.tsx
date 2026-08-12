@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Heart, Bookmark, Clock, Eye, Calendar, Tag, ArrowLeft, Search, BookOpen } from 'lucide-react'
+import { Heart, Bookmark, Clock, Eye, Calendar, Tag, ArrowLeft, ArrowRight, Search, BookOpen, ChevronRight, Home } from 'lucide-react'
 import {
   fetchPostBySlug,
   fetchRelatedPosts,
@@ -12,7 +12,7 @@ import { useAuth } from '@/hooks/useAuth'
 import CommentSection from '@/components/CommentSection'
 import PostCard from '@/components/PostCard'
 import { formatDate, readingTime, formatNumber, SERIES_COLORS, SERIES_ICONS, cn, getInitials } from '@/utils'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import toast from 'react-hot-toast'
 import { saveReadingHistory } from '@/utils/history'
 import { sanitizeHtml } from '@/utils/sanitizeHtml'
@@ -181,11 +181,28 @@ export default function PostDetailPage() {
       <ArticleSeo post={post as PostWithDetails} />
 
       <article className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-6">
-          <Link to="/" className="btn-ghost text-sm inline-flex items-center gap-2">
-            <ArrowLeft size={15} /> Trang chủ
-          </Link>
-        </div>
+        <nav className="article-breadcrumb mb-7" aria-label="Đường dẫn bài viết">
+          <ol>
+            <li>
+              <Link to="/" aria-label="Về trang chủ"><Home size={14} /><span className="hidden sm:inline">Trang chủ</span></Link>
+            </li>
+            <li aria-hidden="true"><ChevronRight size={14} /></li>
+            {detailPost.series ? (
+              <>
+                <li><Link to="/series">Chuyên đề</Link></li>
+                <li aria-hidden="true"><ChevronRight size={14} /></li>
+                <li><Link to={`/series/${detailPost.series.slug}`}>{detailPost.series.name}</Link></li>
+                <li aria-hidden="true"><ChevronRight size={14} /></li>
+              </>
+            ) : (
+              <>
+                <li><Link to="/search">Kho bài viết</Link></li>
+                <li aria-hidden="true"><ChevronRight size={14} /></li>
+              </>
+            )}
+            <li className="article-breadcrumb-current" aria-current="page">{post.title}</li>
+          </ol>
+        </nav>
 
         {/* Series badge */}
         {detailPost.series && (
@@ -294,16 +311,40 @@ export default function PostDetailPage() {
         <CommentSection postId={post.id} currentUser={user} />
 
         {/* Related Posts */}
-        {related.length > 0 && (
-          <section className="mt-16">
-            <h3 className="section-heading"><BookOpen size={22} /> Cùng chuyên đề</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-              {(related as unknown as PostWithDetails[]).map(rp => <PostCard key={rp.id} post={rp} />)}
-            </div>
-          </section>
-        )}
+        {related.length > 0 && <RelatedPostsSlider posts={related as unknown as PostWithDetails[]} />}
       </article>
     </>
+  )
+}
+
+function RelatedPostsSlider({ posts }: { posts: PostWithDetails[] }) {
+  const trackRef = useRef<HTMLDivElement>(null)
+
+  const move = (direction: -1 | 1) => {
+    const track = trackRef.current
+    if (!track) return
+    const distance = Math.max(track.clientWidth * 0.86, 280)
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    track.scrollBy({ left: direction * distance, behavior: reducedMotion ? 'auto' : 'smooth' })
+  }
+
+  return (
+    <section className="related-posts-section mt-16" aria-labelledby="related-posts-heading">
+      <div className="related-posts-header">
+        <h3 id="related-posts-heading" className="section-heading"><BookOpen size={22} /> Cùng chuyên đề</h3>
+        <div className="related-posts-controls" aria-label="Điều khiển bài viết liên quan">
+          <button type="button" className="btn-ghost p-2" onClick={() => move(-1)} aria-label="Xem bài viết trước"><ArrowLeft size={17} /></button>
+          <button type="button" className="btn-ghost p-2" onClick={() => move(1)} aria-label="Xem bài viết tiếp theo"><ArrowRight size={17} /></button>
+        </div>
+      </div>
+      <div ref={trackRef} className="related-posts-track" tabIndex={0} aria-label="Danh sách bài viết cùng chuyên đề">
+        {posts.map(post => (
+          <div className="related-post-slide" key={post.id}>
+            <PostCard post={post} />
+          </div>
+        ))}
+      </div>
+    </section>
   )
 }
 

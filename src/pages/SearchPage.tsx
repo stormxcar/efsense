@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { fetchPosts, fetchTaxonomies } from '@/services/api'
@@ -23,7 +23,23 @@ export default function SearchPage() {
   const [playerId, setPlayerId] = useState(searchParams.get('player') ?? '')
   const [seasonId, setSeasonId] = useState(searchParams.get('season') ?? '')
   const [sort, setSort] = useState<'newest' | 'oldest' | 'popular'>((searchParams.get('sort') as 'newest' | 'oldest' | 'popular') ?? 'newest')
+  const [searchFocused, setSearchFocused] = useState(false)
+  const searchBoxRef = useRef<HTMLDivElement>(null)
   const query = useDebounce(input.trim(), 400)
+
+  const suggestions = useMemo(() => {
+    const normalized = input.trim().toLocaleLowerCase('vi')
+    const pool = [...new Set([...history, ...POPULAR_SEARCHES])]
+    return pool.filter(term => !normalized || term.toLocaleLowerCase('vi').includes(normalized)).slice(0, 6)
+  }, [history, input])
+
+  useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(event.target as Node)) setSearchFocused(false)
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [])
 
   useEffect(() => {
     const next: Record<string, string> = {}
@@ -73,6 +89,7 @@ export default function SearchPage() {
   const selectHistory = (term: string) => {
     setInput(term)
     setPage(1)
+    setSearchFocused(false)
   }
 
   const removeHistoryItem = (term: string) => {
@@ -88,11 +105,13 @@ export default function SearchPage() {
           <h1 className="text-5xl md:text-7xl font-black uppercase tracking-[-.035em] leading-[.88] mb-6" style={{ fontFamily: 'var(--font-family-display)' }}>
             Tìm câu chuyện bạn quan tâm
           </h1>
-          <div className="relative">
+          <div ref={searchBoxRef} className="relative">
             <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
             <input
               value={input}
-              onChange={event => { setInput(event.target.value); setPage(1) }}
+              onFocus={() => setSearchFocused(true)}
+              onKeyDown={event => { if (event.key === 'Escape') setSearchFocused(false) }}
+              onChange={event => { setInput(event.target.value); setPage(1); setSearchFocused(true) }}
               placeholder="Tìm cầu thủ, câu lạc bộ, chiến thuật..."
               aria-label="Tìm kiếm bài viết"
               className="input pl-12 pr-12 h-14 text-base"
@@ -101,6 +120,21 @@ export default function SearchPage() {
               <button type="button" onClick={() => setInput('')} aria-label="Xóa nội dung tìm kiếm" className="btn-ghost absolute right-2 top-1/2 -translate-y-1/2 p-2">
                 <X size={17} />
               </button>
+            )}
+            {searchFocused && suggestions.length > 0 && (
+              <div className="search-suggestions-panel" role="listbox" aria-label="Gợi ý tìm kiếm nhanh">
+                <p className="search-suggestions-label">{input.trim() ? 'Gợi ý phù hợp' : 'Tìm nhanh'}</p>
+                {suggestions.map(term => {
+                  const fromHistory = history.some(item => item.toLocaleLowerCase('vi') === term.toLocaleLowerCase('vi'))
+                  return (
+                    <button key={term} type="button" role="option" className="search-suggestion-row" onMouseDown={event => event.preventDefault()} onClick={() => selectHistory(term)}>
+                      {fromHistory ? <History size={15} /> : <TrendingUp size={15} />}
+                      <span>{term}</span>
+                      <ArrowRight size={14} className="ml-auto" />
+                    </button>
+                  )
+                })}
+              </div>
             )}
           </div>
           <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>
