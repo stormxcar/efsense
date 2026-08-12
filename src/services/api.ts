@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { uploadImageToCloudinary, uploadVideoToCloudinary } from '@/lib/cloudinary'
+import { cloudinaryVideoPosterUrl, optimizeCloudinaryDeliveryUrl, uploadImageToCloudinary, uploadVideoToCloudinary } from '@/lib/cloudinary'
 import type { CommunityCommentWithUser, CommunityPostWithDetails, HistoryTimelineEventWithPost, UserRow } from '@/types/database'
 
 // ---- AUTH SERVICES ----
@@ -395,7 +395,17 @@ export async function fetchCommunityPosts({
   page = 1,
   limit = 12,
   type = 'all',
-}: { page?: number; limit?: number; type?: 'all' | 'discussion' | 'reel' | 'showcase' } = {}) {
+  viewerId,
+}: { page?: number; limit?: number; type?: 'all' | 'discussion' | 'reel' | 'showcase'; viewerId?: string } = {}) {
+  let hiddenAuthorIds: string[] = []
+  if (viewerId) {
+    const { data: relations } = await supabase
+      .from('community_user_relations')
+      .select('target_user_id')
+      .eq('follower_id', viewerId)
+      .in('relation_type', ['mute', 'block'])
+    hiddenAuthorIds = [...new Set((relations ?? []).map(relation => relation.target_user_id))]
+  }
   let query = supabase
     .from('community_posts')
     .select(`
@@ -409,6 +419,7 @@ export async function fetchCommunityPosts({
     .range((page - 1) * limit, page * limit - 1)
 
   if (type !== 'all') query = query.eq('post_type', type)
+  if (hiddenAuthorIds.length) query = query.not('author_id', 'in', `(${hiddenAuthorIds.join(',')})`)
   return query as unknown as Promise<{ data: CommunityPostWithDetails[] | null; error: Error | null; count: number | null }>
 }
 
@@ -472,16 +483,52 @@ export async function fetchCommunityLikeState(postId: string, userId?: string) {
   return { isLiked: (data?.length ?? 0) > 0, error }
 }
 
+export async function toggleCommunityBookmark(postId: string, userId: string, isBookmarked: boolean) {
+  if (isBookmarked) return supabase.from('community_post_bookmarks').delete().eq('post_id', postId).eq('user_id', userId)
+  return supabase.from('community_post_bookmarks').insert({ post_id: postId, user_id: userId })
+}
+
+export async function fetchCommunityBookmarkState(postId: string, userId?: string) {
+  if (!userId) return { isBookmarked: false, error: null }
+  const { data, error } = await supabase.from('community_post_bookmarks').select('post_id').eq('post_id', postId).eq('user_id', userId)
+  return { isBookmarked: (data?.length ?? 0) > 0, error }
+}
+
+export async function toggleCommunityUserRelation(followerId: string, targetUserId: string, relationType: 'follow' | 'mute' | 'block', enabled: boolean) {
+  const query = supabase.from('community_user_relations').delete().eq('follower_id', followerId).eq('target_user_id', targetUserId).eq('relation_type', relationType)
+  if (enabled) return query
+  return supabase.from('community_user_relations').insert({ follower_id: followerId, target_user_id: targetUserId, relation_type: relationType })
+}
+
+export async function fetchCommunityUserRelations(followerId: string, targetUserId: string) {
+  const { data, error } = await supabase.from('community_user_relations').select('relation_type').eq('follower_id', followerId).eq('target_user_id', targetUserId)
+  const relations = new Set((data ?? []).map(item => item.relation_type))
+  return { isFollowing: relations.has('follow'), isMuted: relations.has('mute'), isBlocked: relations.has('block'), error }
+}
+
+export async function submitContentReport(data: {
+  reporter_id: string
+  target_type: 'post' | 'community_post' | 'comment' | 'community_comment' | 'reel'
+  target_id: string
+  reason: string
+  description?: string
+}) {
+  return supabase.from('content_reports').insert(data)
+}
+
 export async function uploadCommunityMedia(source: File | string, mediaType: 'image' | 'video') {
   const result = mediaType === 'video'
     ? await uploadVideoToCloudinary(source, 'football-stories/community')
     : await uploadImageToCloudinary(source, 'football-stories/community')
   return {
-    url: result.secure_url,
+    url: optimizeCloudinaryDeliveryUrl(result.secure_url, mediaType),
     publicId: result.public_id,
     width: result.width,
     height: result.height,
     duration: result.duration,
+    thumbnailUrl: mediaType === 'video'
+      ? cloudinaryVideoPosterUrl(result.secure_url)
+      : null,
   }
 }
 

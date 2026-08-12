@@ -1,21 +1,30 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   Search, Bell, Menu, X, LogOut, User, Settings,
-  BookmarkIcon, ChevronDown, Sun, Moon
+  BookmarkIcon, ChevronDown, Sun, Moon, BookOpen, FileText, Compass, ArrowRight
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useUnreadNotifications } from '@/hooks/useAuth'
 import { useUIStore, useThemeStore } from '@/store'
-import { signOut } from '@/services/api'
+import { fetchPosts, fetchSeries, signOut } from '@/services/api'
 import { getInitials, cn } from '@/utils'
 import NotificationDropdown from './NotificationDropdown'
 import Tooltip from './Tooltip'
 import toast from 'react-hot-toast'
 import { useProcessing } from '@/hooks/useProcessing'
 import { getSearchHistory, saveSearchHistory } from '@/utils/history'
+import { useDebounce } from '@/hooks/useDebounce'
 
 const HEADER_SEARCH_SUGGESTIONS = ['Chiến thuật', 'Bóng đá Việt Nam', 'World Cup', 'Premier League', 'eFootball']
+const HEADER_SITE_SECTIONS = [
+  { label: 'Cộng đồng eFootball', href: '/cong-dong', keywords: 'cộng đồng efootball reels thảo luận' },
+  { label: 'Ảnh & Video', href: '/media', keywords: 'ảnh video media' },
+  { label: 'Đọc nhiều tuần này', href: '/doc-nhieu-tuan-nay', keywords: 'đọc nhiều phổ biến' },
+  { label: 'Dòng thời gian bóng đá', href: '/lich-su', keywords: 'lịch sử timeline dòng thời gian' },
+  { label: 'Tất cả chuyên đề', href: '/series', keywords: 'chuyên đề series' },
+]
 
 export default function Header() {
   const { user, isAdmin } = useAuth()
@@ -35,12 +44,33 @@ export default function Header() {
   const searchRef = useRef<HTMLInputElement>(null)
 
   const headerSearchHistory = useMemo(() => searchOpen ? getSearchHistory() : [], [searchOpen])
+  const debouncedHeaderSearch = useDebounce(searchQuery.trim(), 350)
+  const { data: globalSearch, isFetching: globalSearchLoading } = useQuery({
+    queryKey: ['header-global-search', debouncedHeaderSearch],
+    queryFn: async () => {
+      const [postsResult, seriesResult] = await Promise.all([
+        fetchPosts({ search: debouncedHeaderSearch, limit: 4 }),
+        fetchSeries('published'),
+      ])
+      const series = (seriesResult.data ?? []).filter(item => {
+        const term = debouncedHeaderSearch.toLocaleLowerCase('vi')
+        return item.name.toLocaleLowerCase('vi').includes(term) || item.description?.toLocaleLowerCase('vi').includes(term)
+      }).slice(0, 3)
+      return { posts: (postsResult.data ?? []).slice(0, 4), series }
+    },
+    enabled: searchOpen && debouncedHeaderSearch.length >= 2,
+    staleTime: 60_000,
+  })
   const headerSuggestions = useMemo(() => {
     const term = searchQuery.trim().toLocaleLowerCase('vi')
     return [...new Set([...headerSearchHistory, ...HEADER_SEARCH_SUGGESTIONS])]
       .filter(item => !term || item.toLocaleLowerCase('vi').includes(term))
       .slice(0, 5)
   }, [headerSearchHistory, searchQuery])
+  const sectionSuggestions = useMemo(() => {
+    const term = searchQuery.trim().toLocaleLowerCase('vi')
+    return HEADER_SITE_SECTIONS.filter(section => !term || `${section.label} ${section.keywords}`.toLocaleLowerCase('vi').includes(term))
+  }, [searchQuery])
 
   useEffect(() => {
     if (searchOpen) searchRef.current?.focus()
@@ -150,14 +180,31 @@ export default function Header() {
                     className="input w-48 h-9 text-sm"
                     style={{ padding: '0.4rem 0.75rem' }}
                   />
-                  {headerSuggestions.length > 0 && (
-                    <div className="header-search-suggestions" role="listbox" aria-label="Gợi ý tìm kiếm nhanh">
-                      <p className="search-suggestions-label">{searchQuery.trim() ? 'Gợi ý phù hợp' : 'Tìm nhanh'}</p>
-                      {headerSuggestions.map(term => (
-                        <button key={term} type="button" role="option" className="search-suggestion-row" onMouseDown={e => e.preventDefault()} onClick={() => selectHeaderSuggestion(term)}>
-                          <Search size={14} /> <span>{term}</span>
-                        </button>
-                      ))}
+                  {(debouncedHeaderSearch.length >= 2 || headerSuggestions.length > 0 || sectionSuggestions.length > 0) && (
+                    <div className="header-search-suggestions" role="listbox" aria-label="Tìm kiếm toàn website">
+                      {debouncedHeaderSearch.length >= 2 ? (
+                        <>
+                          {globalSearchLoading && <p className="header-search-status">Đang tìm trên website...</p>}
+                          {!globalSearchLoading && globalSearch?.series.length === 0 && globalSearch.posts.length === 0 && <p className="header-search-status">Chưa có kết quả phù hợp.</p>}
+                          {!globalSearchLoading && globalSearch?.series.length ? <>
+                            <p className="search-suggestions-label">Chuyên đề</p>
+                            {globalSearch.series.map(series => <Link key={series.id} role="option" className="search-suggestion-row" to={`/series/${series.slug}`} onClick={() => setSearchOpen(false)}><BookOpen size={14} /><span>{series.name}</span><ArrowRight size={14} className="ml-auto" /></Link>)}
+                          </> : null}
+                          {!globalSearchLoading && globalSearch?.posts.length ? <>
+                            <p className="search-suggestions-label">Bài viết</p>
+                            {globalSearch.posts.map(post => <Link key={post.id} role="option" className="search-suggestion-row" to={`/posts/${post.slug}`} onClick={() => setSearchOpen(false)}><FileText size={14} /><span className="line-clamp-1">{post.title}</span><ArrowRight size={14} className="ml-auto shrink-0" /></Link>)}
+                          </> : null}
+                        </>
+                      ) : (
+                        <>
+                          {sectionSuggestions.length > 0 && <>
+                            <p className="search-suggestions-label">Mục trên website</p>
+                            {sectionSuggestions.map(section => <Link key={section.href} role="option" className="search-suggestion-row" to={section.href} onClick={() => setSearchOpen(false)}><Compass size={14} /><span>{section.label}</span><ArrowRight size={14} className="ml-auto" /></Link>)}
+                          </>}
+                          <p className="search-suggestions-label">Tìm nhanh</p>
+                          {headerSuggestions.map(term => <button key={term} type="button" role="option" className="search-suggestion-row" onMouseDown={e => e.preventDefault()} onClick={() => selectHeaderSuggestion(term)}><Search size={14} /><span>{term}</span><ArrowRight size={14} className="ml-auto" /></button>)}
+                        </>
+                      )}
                     </div>
                   )}
                 </div>

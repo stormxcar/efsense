@@ -29,6 +29,19 @@ async function registerMediaAsset(result: CloudinaryUploadResponse, folder: Clou
 const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME as string | undefined
 const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET as string | undefined
 
+export function optimizeCloudinaryDeliveryUrl(url: string, resourceType: 'image' | 'video' = 'image') {
+  if (!url.includes('res.cloudinary.com') || !url.includes('/upload/')) return url
+  const transformation = resourceType === 'video' ? 'vc_auto,q_auto:good,f_auto' : 'f_auto,q_auto'
+  return url.replace('/upload/', `/upload/${transformation}/`)
+}
+
+export function cloudinaryVideoPosterUrl(url: string) {
+  if (!url.includes('res.cloudinary.com') || !url.includes('/video/upload/')) return url
+  return url
+    .replace('/video/upload/', '/video/upload/so_auto,q_auto,f_jpg/')
+    .replace(/\.[^./?]+(?=($|\?))/, '.jpg')
+}
+
 function assertConfiguration() {
   const missing = [
     !cloudName ? 'VITE_CLOUDINARY_CLOUD_NAME' : null,
@@ -57,6 +70,29 @@ export function validateImageFile(file: File, maxSizeMb = 8) {
 export function validateVideoFile(file: File, maxSizeMb = 60) {
   if (!file.type.startsWith('video/')) throw new Error('Tệp đã chọn không phải là video')
   if (file.size > maxSizeMb * 1024 * 1024) throw new Error(`Video Reels phải nhỏ hơn ${maxSizeMb} MB`)
+}
+
+export function validateVideoDuration(file: File, maxSeconds = 60): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const previewUrl = URL.createObjectURL(file)
+    const video = document.createElement('video')
+    const cleanup = () => {
+      URL.revokeObjectURL(previewUrl)
+      video.remove()
+    }
+    video.preload = 'metadata'
+    video.onloadedmetadata = () => {
+      const duration = Number.isFinite(video.duration) ? video.duration : 0
+      cleanup()
+      if (duration > maxSeconds) reject(new Error(`Video Reels phải ngắn hơn ${maxSeconds} giây`))
+      else resolve()
+    }
+    video.onerror = () => {
+      cleanup()
+      reject(new Error('Không thể đọc thời lượng video. Vui lòng chọn tệp video khác.'))
+    }
+    video.src = previewUrl
+  })
 }
 
 export async function uploadImageToCloudinary(

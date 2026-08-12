@@ -271,6 +271,16 @@ export interface Database {
         Insert: { post_id: string; user_id: string }
         Update: Partial<{ post_id: string; user_id: string }>
       }
+      community_post_bookmarks: {
+        Row: { post_id: string; user_id: string; created_at: string }
+        Insert: { post_id: string; user_id: string }
+        Update: Partial<{ post_id: string; user_id: string }>
+      }
+      community_user_relations: {
+        Row: { follower_id: string; target_user_id: string; relation_type: 'follow' | 'mute' | 'block'; created_at: string }
+        Insert: { follower_id: string; target_user_id: string; relation_type: 'follow' | 'mute' | 'block' }
+        Update: Partial<{ follower_id: string; target_user_id: string; relation_type: 'follow' | 'mute' | 'block' }>
+      }
       community_post_comments: {
         Row: CommunityCommentRow
         Insert: Partial<CommunityCommentRow>
