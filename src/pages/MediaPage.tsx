@@ -30,7 +30,7 @@ export default function MediaPage() {
             <h2 id="video-title">Những khoảnh khắc World Cup đi cùng năm tháng</h2>
             <p>Tuyển tập chính thức từ FIFA, nhìn lại cảm xúc, bàn thắng và những biểu tượng của giải đấu lớn nhất hành tinh.</p>
             <a href="https://www.youtube.com/watch?v=jVtB706YX-E" target="_blank" rel="noreferrer" className="btn-secondary">
-              Mở kênh YouTube <ArrowRight size={15} />
+              Mở video trên YouTube <ArrowRight size={15} />
             </a>
           </div>
           <div className="media-video-frame">
