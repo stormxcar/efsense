@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { FileText, Users, MessageSquare, Flag, Eye, TrendingUp, PlusCircle, BarChart2, Heart, Share2 } from 'lucide-react'
@@ -12,6 +13,8 @@ type SeriesDistribution = { name: string; posts?: Array<{ id: string }> }
 type RecentPost = { id: string; title: string; status: string; view_count: number; author?: { username?: string }; series?: { name?: string } }
 
 export default function AdminDashboard() {
+  const [showAllStats, setShowAllStats] = useState(false)
+
   const { data: stats } = useQuery({
     queryKey: ['admin-stats'],
     queryFn: async () => {
@@ -111,6 +114,9 @@ export default function AdminDashboard() {
     { label: 'Reels 30 ngày', value: advancedMetrics?.summary.reels ?? 0, Icon: BarChart2, color: '#ec4899', href: '/admin/moderation' },
     { label: 'Tỷ lệ duyệt', value: `${advancedMetrics?.summary.approval_rate ?? stats?.approvalRate ?? 0}%`, Icon: TrendingUp, color: '#84cc16', href: '/admin/moderation' },
   ]
+  const primaryStatCards = statCards.slice(0, 6)
+  const hiddenStatCount = statCards.length - primaryStatCards.length
+  const displayedStatCards = showAllStats ? statCards : primaryStatCards
 
   return (
     <div className="p-8">
@@ -125,10 +131,12 @@ export default function AdminDashboard() {
       </div>
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-4 mb-8">
-        {statCards.map(({ label, value, Icon, color, href }) => (
-          <TooltipComp key={label} content={`Nhấn để quản lý ${label.toLowerCase()}`} placement="bottom">
-            <Link to={href} className="card p-5 hover:scale-[1.02] transition-all relative w-full">
+      <div className="mb-8">
+        <div className="overflow-x-auto overscroll-x-contain px-1 pb-2 -mx-1">
+          <div className={`grid min-w-[980px] gap-4 ${showAllStats ? 'grid-cols-[repeat(11,minmax(170px,1fr))]' : 'grid-cols-7'}`}>
+            {displayedStatCards.map(({ label, value, Icon, color, href }) => (
+              <TooltipComp key={label} content={`Nhấn để quản lý ${label.toLowerCase()}`} placement="bottom" className="block h-full">
+                <Link to={href} className="card flex h-full min-h-[154px] flex-col p-5 hover:scale-[1.02] transition-all relative w-full">
               <div className="flex items-center justify-between mb-4">
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center"
                   style={{ background: `${color}20`, color }}>
@@ -145,10 +153,28 @@ export default function AdminDashboard() {
                 )}
               </div>
               <p className="text-3xl font-bold" style={{ fontFamily: 'var(--font-family-display)' }}>{value}</p>
-              <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>{label}</p>
-            </Link>
-          </TooltipComp>
-        ))}
+                  <p className="text-sm mt-auto pt-1" style={{ color: 'var(--text-muted)' }}>{label}</p>
+                </Link>
+              </TooltipComp>
+            ))}
+            {!showAllStats && hiddenStatCount > 0 && (
+              <button
+                type="button"
+                className="card flex h-full min-h-[154px] flex-col items-center justify-center p-5 text-center transition-all hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]"
+                onClick={() => setShowAllStats(true)}
+                aria-label={`Xem thêm ${hiddenStatCount} chỉ số`}
+              >
+                <span className="text-3xl font-bold text-[var(--accent)]">+{hiddenStatCount}</span>
+                <span className="mt-2 text-sm" style={{ color: 'var(--text-muted)' }}>Xem thêm chỉ số</span>
+              </button>
+            )}
+          </div>
+        </div>
+        {showAllStats && (
+          <button type="button" className="btn-ghost mt-2 text-xs" onClick={() => setShowAllStats(false)}>
+            Thu gọn chỉ số
+          </button>
+        )}
       </div>
 
       {/* Charts */}
