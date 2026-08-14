@@ -11,6 +11,7 @@ import NewsTicker from '@/components/NewsTicker'
 import HeroTypewriter from '@/components/HeroTypewriter'
 import Magnetic from '@/components/Magnetic'
 import { useAuth } from '@/hooks/useAuth'
+import YouTubeVideo from '@/components/YouTubeVideo'
 
 export default function HomePage() {
   const { user } = useAuth()
@@ -222,14 +223,7 @@ export default function HomePage() {
       <Reveal>
         <section className="home-story-film" aria-labelledby="home-film-title">
           <div className="home-story-film-frame">
-            <iframe
-              src="https://www.youtube-nocookie.com/embed/jVtB706YX-E?rel=0"
-              title="Những khoảnh khắc bóng đá kinh điển từ FIFA"
-              loading="lazy"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              referrerPolicy="strict-origin-when-cross-origin"
-              allowFullScreen
-            />
+            <YouTubeVideo url="https://www.youtube.com/watch?v=jVtB706YX-E" title="Những khoảnh khắc bóng đá kinh điển từ FIFA" />
           </div>
           <div className="home-story-film-copy">
             <p className="eyebrow"><Play size={13} /> Vì sao Football Stories tồn tại</p>

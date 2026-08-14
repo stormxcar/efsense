@@ -672,7 +672,7 @@
     text-transform: uppercase;
     pointer-events: none;
   }
-  .home-story-film-frame iframe { width: 100%; height: 100%; border: 0; }
+  .home-story-film-frame .youtube-video { width: 100%; height: 100%; }
   .home-story-film-copy h2 {
     margin: 1rem 0 1.4rem;
     font-family: var(--font-family-display);
@@ -788,29 +788,45 @@
   }
   .media-video-copy p { margin-bottom: 1.5rem; color: var(--text-secondary); line-height: 1.7; }
   .media-video-frame { aspect-ratio: 16 / 9; min-width: 0; overflow: hidden; background: #050806; }
-  .media-video-frame iframe { width: 100%; height: 100%; border: 0; }
+  .media-video-frame .youtube-video { width: 100%; height: 100%; }
   .media-grid {
-    display: grid;
-    grid-template-columns: repeat(12, minmax(0, 1fr));
-    gap: .75rem;
+    columns: 4 13rem;
+    column-gap: .75rem;
   }
-  .media-grid > * { grid-column: span 4; min-width: 0; }
-  .media-grid > :nth-child(1),
-  .media-grid > :nth-child(5) { grid-column: span 8; }
+  .media-grid > * { break-inside: avoid; min-width: 0; margin-bottom: .75rem; }
   .media-tile {
     position: relative;
     display: block;
-    min-height: 20rem;
-    height: 100%;
+    aspect-ratio: 4 / 3;
     overflow: hidden;
     background: var(--bg-card);
   }
+  .media-grid > :nth-child(3n) .media-tile { aspect-ratio: 1 / 1.12; }
+  .media-grid > :nth-child(4n) .media-tile { aspect-ratio: 1.2 / 1; }
   .media-tile img { width: 100%; height: 100%; object-fit: cover; transition: transform .6s cubic-bezier(.2,.8,.2,1); }
   .media-tile::after { content: ""; position: absolute; inset: 30% 0 0; background: linear-gradient(transparent, rgba(2, 7, 4, .92)); }
   .media-tile > div { position: absolute; right: 1.25rem; bottom: 1.25rem; left: 1.25rem; z-index: 1; color: #fff; }
   .media-tile span { color: var(--accent); font-family: var(--font-family-display); font-size: 1.4rem; font-weight: 900; }
   .media-tile h3 { margin-top: .4rem; font-size: 1rem; font-weight: 800; line-height: 1.35; }
   .media-tile:hover img { transform: scale(1.045); }
+
+  .youtube-video { position: relative; overflow: hidden; background: #050806; color: #fff; }
+  .youtube-video > img, .youtube-video-preview > img, .youtube-video-fallback > img { width: 100%; height: 100%; object-fit: cover; }
+  .youtube-video-preview { min-height: 12rem; }
+  .youtube-video-preview::after, .youtube-video-fallback::after { content: ""; position: absolute; inset: 25% 0 0; background: linear-gradient(transparent, rgba(2, 7, 4, .92)); pointer-events: none; }
+  .youtube-video-preview-overlay, .youtube-video-fallback-copy { position: absolute; inset: auto 1rem 1rem; z-index: 1; display: flex; align-items: center; gap: .8rem; }
+  .youtube-video-preview-overlay strong, .youtube-video-fallback-copy p { display: block; font-size: .85rem; line-height: 1.35; }
+  .youtube-video-preview-overlay span { display: block; margin-top: .2rem; color: rgba(255,255,255,.7); font-size: .72rem; }
+  .youtube-video-play { display: grid; width: 3rem; height: 3rem; flex: none; place-items: center; border-radius: 999px; background: var(--accent); color: var(--accent-ink); transition: transform .2s ease; }
+  .youtube-video-play:hover { transform: scale(1.06); }
+  .youtube-video-fallback { min-height: 15rem; display: flex; align-items: stretch; }
+  .youtube-video-fallback-copy { flex-direction: column; align-items: flex-start; gap: .55rem; }
+  .youtube-video-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .youtube-video-actions .btn-primary, .youtube-video-actions .btn-ghost { font-size: .75rem; padding: .55rem .75rem; }
+  .youtube-video-invalid { min-height: 12rem; display: grid; place-items: center; gap: .5rem; padding: 2rem; color: var(--text-secondary); text-align: center; }
+  .youtube-video-embed iframe { display: block; width: 100%; height: 100%; border: 0; }
+  .youtube-video-embed-help { position: absolute; right: .65rem; bottom: .65rem; left: .65rem; display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .45rem .6rem; background: rgba(2, 7, 4, .78); color: rgba(255,255,255,.72); font-size: .68rem; }
+  .youtube-video-embed-help a { display: inline-flex; align-items: center; gap: .25rem; color: var(--accent); font-weight: 800; white-space: nowrap; }
 
   /* ── eFootball community ────────────────────────── */
   .community-heading {
@@ -1128,8 +1144,13 @@
   .home-community-feature-art { min-height: 6rem; }
   .home-media-images { grid-template-rows: 18rem 10rem; }
   .media-page-heading h1 { font-size: clamp(3.5rem, 18vw, 6rem); }
-  .media-grid > *, .media-grid > :nth-child(1), .media-grid > :nth-child(5) { grid-column: 1 / -1; }
-  .media-tile { min-height: 18rem; }
+  .media-grid { columns: 2; column-gap: .55rem; }
+  .media-grid > * { margin-bottom: .55rem; }
+  .media-tile { min-height: 0; }
+  .media-tile h3 { font-size: .78rem; }
+  .media-tile > div { right: .7rem; bottom: .7rem; left: .7rem; }
+  .media-tile span { font-size: 1rem; }
+  .youtube-video-embed-help span { display: none; }
   .search-filter-panel { grid-template-columns: 1fr 1fr; }
   .search-filter-panel > div:first-child { grid-column: 1 / -1; }
   .article-gallery-grid { columns: 1; }

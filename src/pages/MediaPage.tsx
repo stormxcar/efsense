@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import Reveal from '@/components/Reveal'
 import { fetchPosts } from '@/services/api'
 import type { PostWithDetails } from '@/types/database'
+import YouTubeVideo from '@/components/YouTubeVideo'
 
 export default function MediaPage() {
   const { data, isLoading } = useQuery({
@@ -29,18 +30,11 @@ export default function MediaPage() {
             <h2 id="video-title">Những khoảnh khắc World Cup đi cùng năm tháng</h2>
             <p>Tuyển tập chính thức từ FIFA, nhìn lại cảm xúc, bàn thắng và những biểu tượng của giải đấu lớn nhất hành tinh.</p>
             <a href="https://www.youtube.com/watch?v=jVtB706YX-E" target="_blank" rel="noreferrer" className="btn-secondary">
-              Xem trên YouTube <ArrowRight size={15} />
+              Mở kênh YouTube <ArrowRight size={15} />
             </a>
           </div>
           <div className="media-video-frame">
-            <iframe
-              src="https://www.youtube-nocookie.com/embed/jVtB706YX-E"
-              title="Những khoảnh khắc FIFA World Cup kinh điển"
-              loading="lazy"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              referrerPolicy="strict-origin-when-cross-origin"
-              allowFullScreen
-            />
+            <YouTubeVideo url="https://www.youtube.com/watch?v=jVtB706YX-E" title="Những khoảnh khắc FIFA World Cup kinh điển" />
           </div>
         </section>
       </Reveal>
@@ -57,7 +51,7 @@ export default function MediaPage() {
             {posts.map((post, index) => (
               <Reveal key={post.id} delay={(index % 3) * 70}>
                 <Link to={`/posts/${post.slug}`} className="media-tile">
-                  <img src={post.cover_image ?? ''} alt="" loading="lazy" decoding="async" />
+                  <img src={post.cover_image ?? ''} alt={post.title} loading="lazy" decoding="async" />
                   <div>
                     <span>{index + 1 < 10 ? `0${index + 1}` : index + 1}</span>
                     <h3>{post.title}</h3>
