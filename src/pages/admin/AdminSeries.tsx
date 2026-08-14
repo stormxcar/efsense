@@ -10,6 +10,7 @@ import toast from 'react-hot-toast'
 import CloudinaryImageField from '@/components/CloudinaryImageField'
 import { optionalHttpUrl, requiredText } from '@/utils/validation'
 import ConfirmModal from '@/components/ConfirmModal'
+import AdminListSearch from '@/components/AdminListSearch'
 
 const DEFAULT_FORM = { name: '', slug: '', description: '', thumbnail: '', status: 'draft' as 'draft' | 'published' }
 
@@ -28,6 +29,9 @@ export default function AdminSeries() {
   const [showNew, setShowNew] = useState(false)
   const [form, setForm] = useState(DEFAULT_FORM)
   const [confirmSeriesId, setConfirmSeriesId] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'draft'>('all')
+  const [sort, setSort] = useState<'newest' | 'oldest' | 'name'>('newest')
 
   const { data: series = [], isLoading } = useQuery({
     queryKey: ['admin-series'],
@@ -50,6 +54,10 @@ export default function AdminSeries() {
     mutationFn: (id: string) => deleteSeries(id).then(() => {}),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-series'] }); toast.success('Đã xóa chuyên đề') },
   })
+
+  const visibleSeries = (series as SeriesRow[])
+    .filter(item => (!search.trim() || `${item.name} ${item.slug} ${item.description ?? ''}`.toLowerCase().includes(search.trim().toLowerCase())) && (statusFilter === 'all' || item.status === statusFilter))
+    .sort((first, second) => sort === 'name' ? first.name.localeCompare(second.name, 'vi') : sort === 'oldest' ? first.created_at.localeCompare(second.created_at) : second.created_at.localeCompare(first.created_at))
 
   const startEdit = (s: SeriesRow) => {
     setEditing(s.id)
@@ -114,10 +122,23 @@ export default function AdminSeries() {
       )}
 
       {/* Series List */}
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        <AdminListSearch value={search} onChange={setSearch} placeholder="Tìm chuyên đề..." storageKey="football-stories-admin-series-search" suggestions={['Chiến thuật', 'Lịch sử bóng đá', 'eFootball', 'Bóng đá Việt Nam']} />
+        <select value={statusFilter} onChange={event => setStatusFilter(event.target.value as typeof statusFilter)} className="input h-9 w-auto text-sm" aria-label="Lọc trạng thái chuyên đề">
+          <option value="all">Tất cả trạng thái</option>
+          <option value="published">Đã xuất bản</option>
+          <option value="draft">Bản nháp</option>
+        </select>
+        <select value={sort} onChange={event => setSort(event.target.value as typeof sort)} className="input h-9 w-auto text-sm" aria-label="Sắp xếp chuyên đề">
+          <option value="newest">Mới nhất</option>
+          <option value="oldest">Cũ nhất</option>
+          <option value="name">Theo tên A-Z</option>
+        </select>
+      </div>
       <div className="space-y-3">
         {isLoading ? (
           [...Array(4)].map((_, i) => <div key={i} className="skeleton h-20 rounded-2xl" />)
-        ) : series.map((s: SeriesRow) => (
+        ) : visibleSeries.length === 0 ? <div className="empty-state">Không tìm thấy chuyên đề phù hợp.</div> : visibleSeries.map((s: SeriesRow) => (
           <div key={s.id} className="card p-5">
             {editing === s.id ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -151,7 +172,7 @@ export default function AdminSeries() {
               </div>
             ) : (
               <div className="flex items-center gap-4">
-                <span className="text-3xl">{SERIES_ICONS[s.slug] ?? '📰'}</span>
+                {s.thumbnail ? <img src={s.thumbnail} alt={`Ảnh đại diện ${s.name}`} loading="lazy" className="h-16 w-16 shrink-0 rounded-xl bg-black/10 object-contain" /> : <span className="text-3xl">{SERIES_ICONS[s.slug] ?? '📰'}</span>}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
                     <p className="font-semibold">{s.name}</p>

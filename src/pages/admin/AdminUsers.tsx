@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { createManagedUser, updateUserRole, runAdminSecurityAction } from '@/services/api'
-import { Search, UserX, UserCheck, Trash2, PlusCircle, UserPlus, LogOut } from 'lucide-react'
+import { UserX, UserCheck, Trash2, PlusCircle, UserPlus, LogOut } from 'lucide-react'
 import { formatDate, getInitials } from '@/utils'
 import Tooltip from '@/components/Tooltip'
 import toast from 'react-hot-toast'
@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { requiredText, validateAdminEmail, validatePassword } from '@/utils/validation'
 import type { UserRow } from '@/types/database'
 import ConfirmModal from '@/components/ConfirmModal'
+import AdminListSearch from '@/components/AdminListSearch'
 
 export default function AdminUsers() {
   const { user: currentUser } = useAuth()
@@ -19,13 +20,18 @@ export default function AdminUsers() {
   const [showNewUser, setShowNewUser] = useState(false)
   const [newUserForm, setNewUserForm] = useState({ email: '', password: '', username: '', role: 'user' as UserRow['role'] })
   const [confirmUserId, setConfirmUserId] = useState<string | null>(null)
+  const [roleFilter, setRoleFilter] = useState<'all' | UserRow['role']>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended' | 'banned'>('all')
+  const [sort, setSort] = useState<'newest' | 'oldest' | 'name'>('newest')
   const PAGE_SIZE = 15
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-users', page, search],
+    queryKey: ['admin-users', page, search, roleFilter, statusFilter, sort],
     queryFn: async () => {
-      let query = supabase.from('users').select('*', { count: 'exact' }).order('created_at', { ascending: false }).range((page-1)*PAGE_SIZE, page*PAGE_SIZE-1)
-      if (search) query = query.ilike('username', `%${search}%`)
+      let query = supabase.from('users').select('*', { count: 'exact' }).order(sort === 'name' ? 'username' : 'created_at', { ascending: sort !== 'newest' }).range((page-1)*PAGE_SIZE, page*PAGE_SIZE-1)
+      if (search) query = query.or(`username.ilike.%${search}%,email.ilike.%${search}%`)
+      if (roleFilter !== 'all') query = query.eq('role', roleFilter)
+      if (statusFilter !== 'all') query = query.eq('status', statusFilter)
       return query
     },
   })
@@ -91,11 +97,26 @@ export default function AdminUsers() {
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-family-display)' }}>Quản lý người dùng</h1>
         <div className="flex items-center gap-4">
-          <div className="relative hidden md:block">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
-            <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }}
-              placeholder="Tìm người dùng..." className="input pl-9 h-9 text-sm w-52" />
-          </div>
+          <AdminListSearch value={search} onChange={value => { setSearch(value); setPage(1) }} placeholder="Tìm người dùng..." storageKey="football-stories-admin-users-search" suggestions={['admin', 'editor', 'moderator', 'contributor']} />
+          <select value={roleFilter} onChange={event => { setRoleFilter(event.target.value as typeof roleFilter); setPage(1) }} className="input h-9 w-auto text-sm" aria-label="Lọc vai trò người dùng">
+            <option value="all">Tất cả vai trò</option>
+            <option value="user">Người dùng</option>
+            <option value="contributor">Cộng tác viên</option>
+            <option value="editor">Biên tập viên</option>
+            <option value="moderator">Kiểm duyệt viên</option>
+            <option value="admin">Quản trị viên</option>
+          </select>
+          <select value={statusFilter} onChange={event => { setStatusFilter(event.target.value as typeof statusFilter); setPage(1) }} className="input h-9 w-auto text-sm" aria-label="Lọc trạng thái người dùng">
+            <option value="all">Tất cả trạng thái</option>
+            <option value="active">Hoạt động</option>
+            <option value="suspended">Tạm ngưng</option>
+            <option value="banned">Đã cấm</option>
+          </select>
+          <select value={sort} onChange={event => { setSort(event.target.value as typeof sort); setPage(1) }} className="input h-9 w-auto text-sm" aria-label="Sắp xếp người dùng">
+            <option value="newest">Mới tham gia</option>
+            <option value="oldest">Tham gia lâu nhất</option>
+            <option value="name">Theo tên A-Z</option>
+          </select>
           <button onClick={() => setShowNewUser(!showNewUser)} className="btn-primary text-sm">
             <UserPlus size={15} /> Thêm người dùng
           </button>

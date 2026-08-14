@@ -40,7 +40,7 @@ export default function SeriesListPage() {
                 className="card p-8 group flex items-start gap-6"
               >
                 {s.thumbnail ? (
-                  <img src={s.thumbnail} alt={s.name} loading="lazy" decoding="async" className="w-20 h-20 rounded-xl object-cover shrink-0" />
+                  <img src={s.thumbnail} alt={s.name} loading="lazy" decoding="async" className="h-20 w-20 shrink-0 rounded-xl bg-black/10 object-contain" />
                 ) : (
                   <div className="text-5xl shrink-0 transition-transform group-hover:scale-110">{icon}</div>
                 )}

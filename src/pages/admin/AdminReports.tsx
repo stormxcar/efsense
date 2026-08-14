@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchReports, updateReportStatus } from '@/services/api'
 import { AlertTriangle, X, Lock } from 'lucide-react'
@@ -5,6 +6,7 @@ import { formatRelativeDate } from '@/utils'
 import Tooltip from '@/components/Tooltip'
 import toast from 'react-hot-toast'
 import ExpandableText from '@/components/ExpandableText'
+import AdminListSearch from '@/components/AdminListSearch'
 
 type AdminReport = {
   id: string
@@ -26,6 +28,10 @@ const REASON_LABELS: Record<string, string> = {
 
 export default function AdminReports() {
   const qc = useQueryClient()
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | AdminReport['status']>('all')
+  const [reasonFilter, setReasonFilter] = useState<'all' | keyof typeof REASON_LABELS>('all')
+  const [sort, setSort] = useState<'newest' | 'oldest'>('newest')
 
   const { data: reports = [] } = useQuery({
     queryKey: ['admin-reports'],
@@ -38,16 +44,42 @@ export default function AdminReports() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-reports'] }); toast.success('Đã cập nhật báo cáo') },
   })
 
-  const pending = reports.filter((r: AdminReport) => r.status === 'pending')
-  const resolved = reports.filter((r: AdminReport) => r.status !== 'pending')
+  const filteredReports = (reports as AdminReport[])
+    .filter(report => {
+      const term = search.trim().toLowerCase()
+      const matchesSearch = !term || `${report.reason} ${REASON_LABELS[report.reason] ?? ''} ${report.description ?? ''} ${report.reporter?.username ?? ''} ${report.reported?.username ?? ''}`.toLowerCase().includes(term)
+      return matchesSearch && (statusFilter === 'all' || report.status === statusFilter) && (reasonFilter === 'all' || report.reason === reasonFilter)
+    })
+    .sort((first, second) => sort === 'newest' ? second.created_at.localeCompare(first.created_at) : first.created_at.localeCompare(second.created_at))
+  const pending = filteredReports.filter(report => report.status === 'pending')
+  const resolved = filteredReports.filter(report => report.status !== 'pending')
 
   return (
     <div className="p-8">
-      <div className="flex items-center gap-3 mb-8">
+      <div className="mb-6 flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-family-display)' }}>Quản lý báo cáo</h1>
         {pending.length > 0 && (
           <span className="badge badge-red text-sm">{pending.length} đang chờ</span>
         )}
+      </div>
+
+      <div className="mb-8 flex flex-wrap items-center gap-3">
+        <AdminListSearch value={search} onChange={setSearch} placeholder="Tìm báo cáo..." storageKey="football-stories-admin-reports-search" suggestions={['spam', 'quấy rối', 'nội dung phản cảm', 'thông tin sai lệch']} />
+        <select value={statusFilter} onChange={event => setStatusFilter(event.target.value as typeof statusFilter)} className="input h-9 w-auto text-sm" aria-label="Lọc trạng thái báo cáo">
+          <option value="all">Tất cả trạng thái</option>
+          <option value="pending">Đang chờ</option>
+          <option value="ignored">Đã bỏ qua</option>
+          <option value="warned">Đã cảnh báo</option>
+          <option value="locked">Đã khóa</option>
+        </select>
+        <select value={reasonFilter} onChange={event => setReasonFilter(event.target.value as typeof reasonFilter)} className="input h-9 w-auto text-sm" aria-label="Lọc lý do báo cáo">
+          <option value="all">Tất cả lý do</option>
+          {Object.entries(REASON_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
+        <select value={sort} onChange={event => setSort(event.target.value as typeof sort)} className="input h-9 w-auto text-sm" aria-label="Sắp xếp báo cáo">
+          <option value="newest">Mới nhất</option>
+          <option value="oldest">Cũ nhất</option>
+        </select>
       </div>
 
       {/* Pending Reports */}

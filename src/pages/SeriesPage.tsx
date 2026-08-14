@@ -87,7 +87,7 @@ export default function SeriesPage() {
           style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
           <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
             {series.thumbnail ? (
-              <img src={series.thumbnail} alt={series.name} loading="lazy" decoding="async" className="w-24 h-24 rounded-xl object-cover" />
+              <img src={series.thumbnail} alt={series.name} loading="lazy" decoding="async" className="h-24 w-24 rounded-xl bg-black/10 object-contain" />
             ) : (
               <div className="text-6xl">{icon}</div>
             )}

@@ -8,6 +8,7 @@ import { formatRelativeDate, getInitials } from '@/utils'
 import toast from 'react-hot-toast'
 import ConfirmModal from '@/components/ConfirmModal'
 import ExpandableText from '@/components/ExpandableText'
+import AdminListSearch from '@/components/AdminListSearch'
 
 type AdminComment = {
   id: string
@@ -22,19 +23,22 @@ export default function AdminComments() {
   const qc = useQueryClient()
   const [page, setPage] = useState(1)
   const [filter, setFilter] = useState<'all' | 'visible' | 'hidden'>('all')
+  const [search, setSearch] = useState('')
+  const [sort, setSort] = useState<'newest' | 'oldest'>('newest')
   const [confirmCommentId, setConfirmCommentId] = useState<string | null>(null)
   const filterLabels = { all: 'Tất cả', visible: 'Đang hiển thị', hidden: 'Đã ẩn' }
   const PAGE_SIZE = 20
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-comments', page, filter],
+    queryKey: ['admin-comments', page, filter, search, sort],
     queryFn: async () => {
       let query = supabase
         .from('comments')
         .select('*, user:users(username, avatar), post:posts(title, slug)', { count: 'exact' })
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: sort === 'oldest' })
         .range((page-1)*PAGE_SIZE, page*PAGE_SIZE-1)
       if (filter !== 'all') query = query.eq('status', filter)
+      if (search.trim()) query = query.ilike('content', `%${search.trim()}%`)
       return query
     },
   })
@@ -62,9 +66,14 @@ export default function AdminComments() {
 
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
         <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-family-display)' }}>Kiểm duyệt bình luận</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <AdminListSearch value={search} onChange={value => { setSearch(value); setPage(1) }} placeholder="Tìm bình luận..." storageKey="football-stories-admin-comments-search" suggestions={['pressing', 'eFootball', 'chiến thuật']} />
+          <select value={sort} onChange={event => { setSort(event.target.value as typeof sort); setPage(1) }} className="input h-9 w-auto text-sm" aria-label="Sắp xếp bình luận">
+            <option value="newest">Mới nhất</option>
+            <option value="oldest">Cũ nhất</option>
+          </select>
           {(['all', 'visible', 'hidden'] as const).map(f => (
             <button key={f} onClick={() => { setFilter(f); setPage(1) }}
               className={`text-sm px-4 py-2 rounded-xl capitalize transition-all ${filter === f ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' : 'btn-ghost'}`}>

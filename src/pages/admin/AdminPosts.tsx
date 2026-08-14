@@ -3,12 +3,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { deletePost, updatePostsBulk } from '@/services/api'
-import { PlusCircle, Edit2, Trash2, Eye, Search } from 'lucide-react'
+import { PlusCircle, Edit2, Trash2, Eye } from 'lucide-react'
 import { formatDate, formatNumber } from '@/utils'
 import Tooltip from '@/components/Tooltip'
 import toast from 'react-hot-toast'
 import type { PostRow } from '@/types/database'
 import ConfirmModal from '@/components/ConfirmModal'
+import AdminListSearch from '@/components/AdminListSearch'
 
 const PAGE_SIZE = 15
 
@@ -18,17 +19,18 @@ export default function AdminPosts() {
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<string[]>([])
   const [filter, setFilter] = useState<'all' | 'published' | 'scheduled' | 'draft'>('all')
+  const [sort, setSort] = useState<'newest' | 'oldest' | 'popular'>('newest')
   const [confirmPostId, setConfirmPostId] = useState<string | null>(null)
   const filterLabels = { all: 'Tất cả', published: 'Đã xuất bản', scheduled: 'Đã lên lịch', draft: 'Bản nháp' }
   const statusLabels = { published: 'Đã xuất bản', scheduled: 'Đã lên lịch', draft: 'Bản nháp' }
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-posts', page, search, filter],
+    queryKey: ['admin-posts', page, search, filter, sort],
     queryFn: async () => {
       let query = supabase
         .from('posts')
         .select('*, author:users!posts_author_id_fkey(username), series:series(name)', { count: 'exact' })
-        .order('created_at', { ascending: false })
+        .order(sort === 'popular' ? 'view_count' : 'created_at', { ascending: sort === 'oldest' })
         .range((page-1)*PAGE_SIZE, page*PAGE_SIZE-1)
       if (filter !== 'all') query = query.eq('status', filter)
       if (search) query = query.ilike('title', `%${search}%`)
@@ -73,11 +75,12 @@ export default function AdminPosts() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3 mb-6">
-        <div className="relative">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
-          <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }}
-            placeholder="Tìm bài viết..." className="input pl-9 h-9 text-sm w-52" />
-        </div>
+        <AdminListSearch value={search} onChange={value => { setSearch(value); setPage(1) }} placeholder="Tìm bài viết..." storageKey="football-stories-admin-posts-search" suggestions={['Pressing', 'Positional Play', 'Bóng đá Việt Nam', 'eFootball']} />
+        <select value={sort} onChange={event => { setSort(event.target.value as typeof sort); setPage(1) }} className="input h-9 w-auto text-sm" aria-label="Sắp xếp bài viết">
+          <option value="newest">Mới cập nhật</option>
+          <option value="oldest">Cũ nhất</option>
+          <option value="popular">Nhiều lượt xem</option>
+        </select>
         {(['all', 'published', 'scheduled', 'draft'] as const).map(f => (
           <button key={f} onClick={() => { setFilter(f); setPage(1) }}
             className={`text-sm px-4 py-2 rounded-xl capitalize transition-all relative ${filter === f ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' : 'btn-ghost'}`}>

@@ -44,7 +44,7 @@ export default function CloudinaryImageField({ value, onChange, folder, label = 
       <label className="block text-xs font-semibold mb-2">{label}</label>
       {(value || localPreview) ? (
         <div className="relative">
-          <img src={value || localPreview} alt="Xem trước hình ảnh" className="w-full h-36 object-cover rounded-lg" />
+          <img src={value || localPreview} alt="Xem trước hình ảnh" className="block max-h-72 w-full rounded-lg bg-black/10 object-contain" />
           {loading && <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-xs text-white">Đang lưu lên Cloudinary...</span>}
           <button type="button" onClick={() => { onChange(''); setUrl(''); setLocalPreview('') }} className="absolute top-2 right-2 share-utility" aria-label="Xóa ảnh">
             <X size={14} />
