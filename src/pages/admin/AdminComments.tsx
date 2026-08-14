@@ -7,6 +7,7 @@ import { EyeOff, Trash2, Eye } from 'lucide-react'
 import { formatRelativeDate, getInitials } from '@/utils'
 import toast from 'react-hot-toast'
 import ConfirmModal from '@/components/ConfirmModal'
+import ExpandableText from '@/components/ExpandableText'
 
 type AdminComment = {
   id: string
@@ -95,7 +96,7 @@ export default function AdminComments() {
                   </span>
                   <span className="text-xs ml-auto" style={{ color: 'var(--text-muted)' }}>{formatRelativeDate(c.created_at)}</span>
                 </div>
-                <p className="text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>{c.content}</p>
+                <ExpandableText text={c.content} className="text-sm mb-1" style={{ color: 'var(--text-secondary)' }} />
                 {c.post && (
                   <Link to={`/posts/${c.post.slug}`}
                     className="text-xs hover:underline" style={{ color: '#60a5fa' }}>

@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { FileText, Users, MessageSquare, Flag, Eye, TrendingUp, PlusCircle, BarChart2, Heart, Share2 } from 'lucide-react'
+import { FileText, Users, MessageSquare, Flag, Eye, TrendingUp, PlusCircle, BarChart2, Heart, Share2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend } from 'recharts'
 import { format, subDays } from 'date-fns'
 import { vi } from 'date-fns/locale'
 import TooltipComp from '@/components/Tooltip'
@@ -13,7 +13,7 @@ type SeriesDistribution = { name: string; posts?: Array<{ id: string }> }
 type RecentPost = { id: string; title: string; status: string; view_count: number; author?: { username?: string }; series?: { name?: string } }
 
 export default function AdminDashboard() {
-  const [showAllStats, setShowAllStats] = useState(false)
+  const [statPage, setStatPage] = useState(0)
 
   const { data: stats } = useQuery({
     queryKey: ['admin-stats'],
@@ -114,9 +114,15 @@ export default function AdminDashboard() {
     { label: 'Reels 30 ngày', value: advancedMetrics?.summary.reels ?? 0, Icon: BarChart2, color: '#ec4899', href: '/admin/moderation' },
     { label: 'Tỷ lệ duyệt', value: `${advancedMetrics?.summary.approval_rate ?? stats?.approvalRate ?? 0}%`, Icon: TrendingUp, color: '#84cc16', href: '/admin/moderation' },
   ]
-  const primaryStatCards = statCards.slice(0, 6)
-  const hiddenStatCount = statCards.length - primaryStatCards.length
-  const displayedStatCards = showAllStats ? statCards : primaryStatCards
+  const statsPerPage = 7
+  const totalStatPages = Math.max(1, Math.ceil(statCards.length / statsPerPage))
+  const displayedStatCards = statCards.slice(statPage * statsPerPage, (statPage + 1) * statsPerPage)
+  const engagementData = [
+    { name: 'Lượt thích', value: stats?.likes ?? 0, color: '#ef476f' },
+    { name: 'Bình luận', value: stats?.comments ?? 0, color: '#22c55e' },
+    { name: 'Lượt chia sẻ', value: stats?.shares ?? 0, color: '#38bdf8' },
+  ]
+  const engagementTotal = engagementData.reduce((total, item) => total + item.value, 0)
 
   return (
     <div className="p-8">
@@ -132,8 +138,16 @@ export default function AdminDashboard() {
 
       {/* Stat Cards */}
       <div className="mb-8">
-        <div className="overflow-x-auto overscroll-x-contain px-1 pb-2 -mx-1">
-          <div className={`grid min-w-[980px] gap-4 ${showAllStats ? 'grid-cols-[repeat(11,minmax(170px,1fr))]' : 'grid-cols-7'}`}>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Chỉ số tổng quan</p>
+          <div className="flex items-center gap-2">
+            <span className="text-xs tabular-nums" style={{ color: 'var(--text-muted)' }}>{statPage + 1}/{totalStatPages}</span>
+            <button type="button" className="btn-ghost p-2" onClick={() => setStatPage(page => Math.max(0, page - 1))} disabled={statPage === 0} aria-label="Xem nhóm chỉ số trước"><ChevronLeft size={16} /></button>
+            <button type="button" className="btn-ghost p-2" onClick={() => setStatPage(page => Math.min(totalStatPages - 1, page + 1))} disabled={statPage >= totalStatPages - 1} aria-label="Xem nhóm chỉ số tiếp theo"><ChevronRight size={16} /></button>
+          </div>
+        </div>
+        <div className="overflow-hidden px-1 pb-1 -mx-1">
+          <div key={statPage} className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-7 animate-fade-in-up">
             {displayedStatCards.map(({ label, value, Icon, color, href }) => (
               <TooltipComp key={label} content={`Nhấn để quản lý ${label.toLowerCase()}`} placement="bottom" className="block h-full">
                 <Link to={href} className="card flex h-full min-h-[154px] flex-col p-5 hover:scale-[1.02] transition-all relative w-full">
@@ -157,24 +171,8 @@ export default function AdminDashboard() {
                 </Link>
               </TooltipComp>
             ))}
-            {!showAllStats && hiddenStatCount > 0 && (
-              <button
-                type="button"
-                className="card flex h-full min-h-[154px] flex-col items-center justify-center p-5 text-center transition-all hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]"
-                onClick={() => setShowAllStats(true)}
-                aria-label={`Xem thêm ${hiddenStatCount} chỉ số`}
-              >
-                <span className="text-3xl font-bold text-[var(--accent)]">+{hiddenStatCount}</span>
-                <span className="mt-2 text-sm" style={{ color: 'var(--text-muted)' }}>Xem thêm chỉ số</span>
-              </button>
-            )}
           </div>
         </div>
-        {showAllStats && (
-          <button type="button" className="btn-ghost mt-2 text-xs" onClick={() => setShowAllStats(false)}>
-            Thu gọn chỉ số
-          </button>
-        )}
       </div>
 
       {/* Charts */}
@@ -221,6 +219,18 @@ export default function AdminDashboard() {
         <div className="card p-6">
           <h2 className="font-bold mb-6 flex items-center gap-2"><Users size={18} className="text-green-400" /> DAU, lượt đọc và Reels</h2>
           <div className="h-64"><ResponsiveContainer width="100%" height="100%"><LineChart data={advancedMetrics?.timeseries ?? []}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} /><XAxis dataKey="day" stroke="var(--text-muted)" fontSize={10} tickLine={false} axisLine={false} tickFormatter={value => format(new Date(value), 'dd/MM')} /><YAxis stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} /><Tooltip contentStyle={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)', borderRadius: '12px' }} /><Line type="monotone" dataKey="dau" name="DAU" stroke="#22c55e" strokeWidth={2} dot={false} /><Line type="monotone" dataKey="reads" name="Lượt đọc" stroke="#38bdf8" strokeWidth={2} dot={false} /><Line type="monotone" dataKey="reels" name="Reels" stroke="#ec4899" strokeWidth={2} dot={false} /></LineChart></ResponsiveContainer></div>
+        </div>
+        <div className="card p-6">
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <h2 className="font-bold flex items-center gap-2"><Heart size={18} className="text-rose-400" /> Cơ cấu tương tác</h2>
+              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Tổng hợp lượt thích, bình luận và chia sẻ hiện có.</p>
+            </div>
+            <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>{engagementTotal.toLocaleString('vi-VN')} lượt</span>
+          </div>
+          <div className="h-64">
+            {engagementTotal > 0 ? <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={engagementData} dataKey="value" nameKey="name" cx="50%" cy="46%" innerRadius={58} outerRadius={86} paddingAngle={3} label={({ name, percent }) => `${name} ${Math.round((percent ?? 0) * 100)}%`} labelLine={false}>{engagementData.map(item => <Cell key={item.name} fill={item.color} />)}</Pie><Legend verticalAlign="bottom" height={28} iconType="circle" wrapperStyle={{ fontSize: '12px', color: 'var(--text-muted)' }} /></PieChart></ResponsiveContainer> : <div className="flex h-full flex-col items-center justify-center text-center"><Heart size={28} style={{ color: 'var(--text-muted)' }} /><p className="mt-2 text-sm">Chưa có dữ liệu tương tác</p><p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>Biểu đồ sẽ cập nhật khi có hoạt động mới.</p></div>}
+          </div>
         </div>
       </div>
 

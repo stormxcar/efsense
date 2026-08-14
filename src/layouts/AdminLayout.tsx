@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import AdminCommandSearch from '@/components/AdminCommandSearch'
 
 export default function AdminLayout() {
   const { user, isStaff, canEditContent, canModerateContent, isLoading } = useAuth()
@@ -158,6 +159,16 @@ export default function AdminLayout() {
 
       {/* Content */}
       <main className="flex-1 min-w-0 overflow-auto">
+        <header className="sticky top-0 z-[110] flex h-16 items-center justify-between border-b px-4 md:px-6" style={{ background: 'color-mix(in srgb, var(--bg-primary) 90%, transparent)', borderColor: 'var(--border-color)', backdropFilter: 'blur(14px)' }}>
+          <div className="min-w-0">
+            <p className="truncate text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Không gian quản trị</p>
+            <p className="truncate text-sm font-semibold">Football Stories</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <AdminCommandSearch quickLinks={visibleNavItems.map(item => ({ label: item.label, href: item.to, hint: 'Khu vực quản trị' }))} />
+            <span className="hidden text-xs sm:inline" style={{ color: 'var(--text-muted)' }}>{user.role === 'admin' ? 'Quản trị viên' : user.role === 'editor' ? 'Biên tập viên' : user.role === 'moderator' ? 'Kiểm duyệt viên' : 'Cộng tác viên'}</span>
+          </div>
+        </header>
         <Outlet />
       </main>
     </div>

@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { createPost, updatePost, fetchSeries, fetchTags, fetchTaxonomies, createTag, generateSlug } from '@/services/api'
 import { useAuth } from '@/hooks/useAuth'
-import { Save, Eye, ArrowLeft, UploadCloud, X, Plus, Link as LinkIcon, Image } from 'lucide-react'
+import { Save, Eye, ArrowLeft, UploadCloud, X, Plus, Link as LinkIcon, Image, ChevronDown, ChevronUp } from 'lucide-react'
 import toast from 'react-hot-toast'
 import ReactQuill from 'react-quill-new'
 import 'react-quill-new/dist/quill.snow.css'
@@ -79,6 +79,7 @@ export default function AdminPostEditor() {
   const [coverUrlInput, setCoverUrlInput] = useState('')
   const [coverPreview, setCoverPreview] = useState('')
   const [schedulePreset, setSchedulePreset] = useState('')
+  const [showInsertedImagePreview, setShowInsertedImagePreview] = useState(true)
 
   const uploadArticleImage = useCallback(async () => {
     const input = document.createElement('input')
@@ -355,7 +356,16 @@ export default function AdminPostEditor() {
                 placeholder="Viết nội dung bài... Ảnh chèn từ thanh công cụ sẽ được lưu trên Cloudinary."
               />
             </div>
-            {form.content && /<img\b/i.test(form.content) && <div className="mt-4 rounded-xl border p-4" style={{ borderColor: 'var(--border-color)' }}><p className="text-xs font-semibold mb-3" style={{ color: 'var(--text-muted)' }}>Xem trước nội dung đã chèn ảnh</p><div className="ql-content prose-football" dangerouslySetInnerHTML={{ __html: sanitizeHtml(form.content) }} /></div>}
+            {form.content && /<img\b/i.test(form.content) && <div className="mt-4 rounded-xl border p-4" style={{ borderColor: 'var(--border-color)' }}>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>Xem trước nội dung đã chèn ảnh</p>
+                <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={() => setShowInsertedImagePreview(value => !value)} aria-expanded={showInsertedImagePreview} aria-label={showInsertedImagePreview ? 'Thu gọn xem trước nội dung' : 'Mở rộng xem trước nội dung'}>
+                  {showInsertedImagePreview ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  {showInsertedImagePreview ? 'Thu gọn' : 'Mở rộng'}
+                </button>
+              </div>
+              {showInsertedImagePreview && <div className="ql-content prose-football max-h-[34rem] overflow-y-auto" dangerouslySetInnerHTML={{ __html: sanitizeHtml(form.content) }} />}
+            </div>}
           </div>
 
           {/* SEO */}

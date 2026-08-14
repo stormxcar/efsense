@@ -4,6 +4,7 @@ import { AlertTriangle, X, Lock } from 'lucide-react'
 import { formatRelativeDate } from '@/utils'
 import Tooltip from '@/components/Tooltip'
 import toast from 'react-hot-toast'
+import ExpandableText from '@/components/ExpandableText'
 
 type AdminReport = {
   id: string
@@ -110,11 +111,7 @@ function ReportCard({ report, onAction, resolved }: {
               {report.reported?.status}
             </span>
           </div>
-          {report.description && (
-            <p className="text-sm p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', color: 'var(--text-secondary)' }}>
-              {report.description}
-            </p>
-          )}
+          {report.description && <ExpandableText text={report.description} className="text-sm p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', color: 'var(--text-secondary)' }} label="mô tả" />}
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{formatRelativeDate(report.created_at)}</p>
         </div>
 
