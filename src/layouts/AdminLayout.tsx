@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate, Link, useLocation } from 'react-router-do
 import { useAuth } from '@/hooks/useAuth'
 import {
   LayoutDashboard, FileText, Layers, Users, MessageSquare,
-  Flag, ChevronLeft, Shield, PanelLeftClose, PanelLeftOpen, History, ClipboardList, ShieldAlert, CalendarDays, HardDrive, ShieldCheck
+  Flag, ChevronLeft, Shield, PanelLeftClose, PanelLeftOpen, History, ClipboardList, ShieldAlert, CalendarDays, HardDrive, ShieldCheck, BadgeCheck
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -80,6 +80,7 @@ export default function AdminLayout() {
     { to: '/admin/timeline', label: 'Dòng thời gian', Icon: History },
     { to: '/admin/calendar', label: 'Lịch biên tập', Icon: CalendarDays },
     { to: '/admin/media-library', label: 'Thư viện media', Icon: HardDrive },
+    { to: '/admin/roles', label: 'Quyền & vai trò', Icon: BadgeCheck },
     ...(user.role === 'admin' ? [{ to: '/admin/audit-log', label: 'Nhật ký quản trị', Icon: ClipboardList }] : []),
     ...(user.role === 'admin' || user.role === 'moderator' ? [{ to: '/admin/moderation', label: 'Hàng đợi kiểm duyệt', Icon: ShieldAlert }] : []),
     ...(user.role === 'admin' ? [{ to: '/admin/security', label: 'Bảo mật 2FA', Icon: ShieldCheck }] : []),

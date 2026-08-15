@@ -12,6 +12,7 @@ import HeroTypewriter from '@/components/HeroTypewriter'
 import Magnetic from '@/components/Magnetic'
 import { useAuth } from '@/hooks/useAuth'
 import YouTubeVideo from '@/components/YouTubeVideo'
+import { cloudinaryImageSrcSet, cloudinaryResponsiveImageUrl } from '@/lib/cloudinary'
 
 export default function HomePage() {
   const { user } = useAuth()
@@ -254,7 +255,7 @@ export default function HomePage() {
             <div className="home-media-images">
               {(latestPosts as unknown as PostWithDetails[]).slice(0, 3).map((post, index) => (
                 <Link key={post.id} to={`/posts/${post.slug}`} className={`home-media-image home-media-image-${index + 1}`}>
-                  <img src={post.cover_image || undefined} alt={post.title} loading="lazy" decoding="async" />
+                  <img src={post.cover_image ? cloudinaryResponsiveImageUrl(post.cover_image, 960) : undefined} srcSet={post.cover_image ? cloudinaryImageSrcSet(post.cover_image, [360, 640, 960, 1280]) : undefined} sizes="(max-width: 767px) 100vw, 33vw" alt={post.title} loading="lazy" decoding="async" />
                   <span>{post.title}</span>
                 </Link>
               ))}

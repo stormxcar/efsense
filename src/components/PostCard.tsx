@@ -6,6 +6,7 @@ import type { PostWithDetails } from '@/types/database'
 import { formatDate, readingTime, cn, SERIES_COLORS, SERIES_ICONS, formatNumber } from '@/utils'
 import { fetchPostBySlug } from '@/services/api'
 import Tooltip from './Tooltip'
+import { cloudinaryImageSrcSet, cloudinaryResponsiveImageUrl } from '@/lib/cloudinary'
 
 interface Props {
   post: PostWithDetails
@@ -64,7 +65,9 @@ export default function PostCard({ post, variant = 'default' }: Props) {
         {post.cover_image && (
           <div className="relative shrink-0">
             <img
-              src={post.cover_image}
+              src={cloudinaryResponsiveImageUrl(post.cover_image, 160)}
+              srcSet={cloudinaryImageSrcSet(post.cover_image, [96, 160, 240])}
+              sizes="64px"
               alt={post.title}
               className="w-16 h-16 rounded-lg object-cover"
               loading="lazy"
@@ -98,7 +101,9 @@ export default function PostCard({ post, variant = 'default' }: Props) {
         <div className="overflow-hidden relative">
           {post.cover_image ? (
             <img
-              src={post.cover_image}
+              src={cloudinaryResponsiveImageUrl(post.cover_image, 1280)}
+              srcSet={cloudinaryImageSrcSet(post.cover_image, [480, 720, 960, 1280, 1600])}
+              sizes="(max-width: 767px) 100vw, 62vw"
               alt={post.title}
               className="w-full h-full object-cover min-h-56 transition-transform duration-500 group-hover:scale-105"
               loading="eager"
@@ -131,7 +136,7 @@ export default function PostCard({ post, variant = 'default' }: Props) {
             <div className="post-card-author flex items-center gap-2">
               <Tooltip content={post.author?.username ?? 'Ban biên tập'} placement="top">
                 {post.author?.avatar ? (
-                  <img src={post.author.avatar} alt={post.author.username} className="w-7 h-7 rounded-full" />
+                  <img src={cloudinaryResponsiveImageUrl(post.author.avatar, 96)} alt={post.author.username} className="w-7 h-7 rounded-full" />
                 ) : (
                   <div className="w-7 h-7 rounded-md flex items-center justify-center text-xs font-bold" style={{ background: 'var(--accent)', color: 'var(--accent-ink)' }}>
                     {post.author?.username?.[0]?.toUpperCase()}
@@ -168,7 +173,9 @@ export default function PostCard({ post, variant = 'default' }: Props) {
       <div className="overflow-hidden relative">
         {post.cover_image ? (
           <img
-            src={post.cover_image}
+            src={cloudinaryResponsiveImageUrl(post.cover_image, 720)}
+            srcSet={cloudinaryImageSrcSet(post.cover_image, [320, 480, 720, 960])}
+            sizes="(max-width: 640px) 100vw, 50vw"
             alt={post.title}
             className="post-card-image"
             loading="lazy"
@@ -208,7 +215,7 @@ export default function PostCard({ post, variant = 'default' }: Props) {
           <div className="post-card-author flex items-center gap-2">
             <Tooltip content={post.author?.username ?? 'Ban biên tập'} placement="top">
               {post.author?.avatar ? (
-                <img src={post.author.avatar} alt={post.author.username} className="w-6 h-6 rounded-md shrink-0" />
+                <img src={cloudinaryResponsiveImageUrl(post.author.avatar, 96)} alt={post.author.username} className="w-6 h-6 rounded-md shrink-0" />
               ) : (
                 <div className="w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold shrink-0" style={{ background: 'var(--accent)', color: 'var(--accent-ink)' }}>
                   {post.author?.username?.[0]?.toUpperCase() ?? '?'}

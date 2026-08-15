@@ -71,17 +71,17 @@ export function useRealtimeSync() {
         refresh(['post-gallery', 'gallery-admin', 'post'])
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'community_posts' }, payload => {
-        refresh(['community-posts', 'community-comments', 'community-like'])
+        refresh(['community-posts', 'community-comments', 'community-like', 'community-game-versions', 'weekly-community-creators'])
         if (payload.eventType === 'INSERT' && (payload.new as { status?: string }).status === 'published') {
           toast.success('Có bài đăng mới trong cộng đồng eFootball.', { id: `community-post-${(payload.new as { id?: string }).id}` })
         }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'community_post_comments' }, payload => {
-        refresh(['community-comments', 'community-posts'])
+        refresh(['community-comments', 'community-posts', 'admin-comments', 'weekly-community-creators'])
         if (payload.eventType === 'INSERT') toast('Có bình luận mới trong cộng đồng eFootball.', { id: `community-comment-${(payload.new as { id?: string }).id}` })
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'community_post_likes' }, payload => {
-        refresh(['community-like', 'community-reaction', 'community-posts'])
+        refresh(['community-like', 'community-reaction', 'community-posts', 'weekly-community-creators'])
         if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') toast('Cảm xúc cộng đồng vừa được cập nhật.', { id: 'realtime-community-reaction', className: 'realtime-toast' })
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'community_comment_reactions' }, payload => {
@@ -103,6 +103,9 @@ export function useRealtimeSync() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'community_post_tags' }, () => {
         refresh(['community-tags', 'community-posts'])
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'community_tag_follows' }, () => {
+        refresh(['community-tag-follow'])
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'community_post_media' }, payload => {
         refresh(['community-posts', 'community-media'])
         if (payload.eventType === 'INSERT') toast('Media cộng đồng vừa được cập nhật.', { id: `community-media-${(payload.new as { id?: string }).id}`, className: 'realtime-toast' })
@@ -113,6 +116,9 @@ export function useRealtimeSync() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'history_timeline_events' }, payload => {
         refresh(['timeline-events', 'admin-timeline'])
         if (payload.eventType === 'INSERT' && (payload.new as { status?: string }).status === 'published') toast.success('Timeline bóng đá vừa có cột mốc mới.', { id: `timeline-event-${(payload.new as { id?: string }).id}` })
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_logs' }, () => {
+        refresh(['admin-audit-logs', 'admin-audit-summary'])
       })
       .subscribe(status => {
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
@@ -141,8 +147,12 @@ export function useRealtimeSync() {
         payload => {
           const notification = payload.new as NotificationRow
           void queryClient.invalidateQueries({ queryKey: ['notifications', user.id] })
+          const metadata = notification.metadata && typeof notification.metadata === 'object' && !Array.isArray(notification.metadata)
+            ? notification.metadata as Record<string, unknown>
+            : {}
+          const groupTarget = metadata.post_id ?? metadata.comment_id ?? metadata.target_id ?? metadata.series_id ?? metadata.tag_id ?? notification.link ?? notification.type
           toast(notification.title, {
-            id: `notification-${notification.id}`,
+            id: `notification-group-${notification.type}-${String(groupTarget)}`,
             duration: 5000,
             className: 'realtime-toast',
           })

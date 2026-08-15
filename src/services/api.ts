@@ -1,7 +1,7 @@
 import { cloudinaryVideoPosterUrl, optimizeCloudinaryDeliveryUrl, uploadImageToCloudinary, uploadVideoToCloudinary } from '@/lib/cloudinary'
 import { setRememberMe, supabase } from '@/lib/supabase'
 import { validateEmail, validatePassword, validateUsername } from '@/utils/validation'
-import type { CommentWithUser, CommunityCommentReactionSummary, CommunityCommentWithUser, CommunityPostMedia, CommunityPostWithDetails, CommunityReactionSummary, CommunityReactionType, CommunityTag, HistoryTimelineEventWithPost, RecommendedPostRow, UserRow } from '@/types/database'
+import type { AdminModerationCommentRow, AuditLogRow, CommentRevisionRow, CommentWithUser, CommunityCommentReactionSummary, CommunityCommentWithUser, CommunityGameVersionRow, CommunityPopularRankRow, CommunityPostMedia, CommunityPostWithDetails, CommunityReactionSummary, CommunityReactionType, CommunityTag, GroupedNotificationRow, HistoryTimelineEventWithPost, RecommendedPostRow, UserRow, WeeklyCommunityCreatorRow } from '@/types/database'
 
 // ---- AUTH SERVICES ----
 
@@ -89,6 +89,24 @@ export async function getCurrentUser(): Promise<UserRow | null> {
 
 // ---- POST SERVICES ----
 
+type PostMetricRelations = {
+  likes?: Array<{ count: number }> | null
+  comments?: Array<{ count: number }> | null
+  likes_count?: number
+  comments_count?: number
+}
+
+function normalizePostMetrics<T extends object>(posts: T[] | null) {
+  return (posts ?? []).map(post => {
+    const metrics = post as T & PostMetricRelations
+    return {
+      ...post,
+      likes_count: Number(metrics.likes_count ?? metrics.likes?.[0]?.count ?? 0),
+      comments_count: Number(metrics.comments_count ?? metrics.comments?.[0]?.count ?? 0),
+    }
+  })
+}
+
 export async function fetchPosts({
   page = 1,
   limit = 10,
@@ -136,7 +154,8 @@ export async function fetchPosts({
   if (playerId) query = query.eq('player_id', playerId)
   if (seasonId) query = query.eq('season_id', seasonId)
 
-  return query
+  const result = await query
+  return { ...result, data: normalizePostMetrics(result.data ?? []) }
 }
 
 export async function recordUserActivity(
@@ -216,13 +235,14 @@ export async function fetchPostBySlug(slug: string, incrementView = true) {
 export async function fetchRelatedPosts(postId: string, seriesId: string | null, limit = 3) {
   let query = supabase
     .from('posts')
-    .select('id, title, slug, cover_image, excerpt, published_at, series:series(name, slug)')
+    .select('id, title, slug, cover_image, excerpt, published_at, view_count, created_at, updated_at, status, featured, author_id, series_id, likes(count), comments(count), series:series(id, name, slug)')
     .eq('status', 'published')
     .neq('id', postId)
     .limit(limit)
 
   if (seriesId) query = query.eq('series_id', seriesId)
-  return query
+  const result = await query
+  return { ...result, data: normalizePostMetrics(result.data ?? []) }
 }
 
 export async function createPost(post: {
@@ -369,10 +389,21 @@ function toCommentPage<T extends { id: string; created_at: string }>(rows: T[] |
   return { data, nextCursor: hasMore && last ? { created_at: last.created_at, id: last.id } : null, hasMore, error }
 }
 
+async function withReplyCounts<T extends { id: string; created_at: string }>(commentType: 'post' | 'community', rows: T[]) {
+  if (!rows.length) return { data: rows.map(row => ({ ...row, reply_count: 0 })), error: null }
+  const result = await supabase.rpc('comment_reply_counts', {
+    p_comment_type: commentType,
+    p_parent_ids: rows.map(row => row.id),
+  })
+  if (result.error) return { data: [] as Array<T & { reply_count: number }>, error: result.error }
+  const counts = new Map((result.data ?? []).map((item: { parent_id: string; reply_count: number }) => [item.parent_id, Number(item.reply_count)]))
+  return { data: rows.map(row => ({ ...row, reply_count: counts.get(row.id) ?? 0 })), error: null }
+}
+
 export async function fetchComments(postId: string, cursor?: CommentCursor | null, limit = 12): Promise<CommentPage<CommentWithUser>> {
   let query = supabase
     .from('comments')
-    .select('*, user:users(id, username, avatar)')
+    .select('*, user:users!comments_user_id_fkey(id, username, avatar)')
     .eq('post_id', postId)
     .eq('status', 'visible')
     .is('parent_comment_id', null)
@@ -381,13 +412,15 @@ export async function fetchComments(postId: string, cursor?: CommentCursor | nul
     .limit(limit + 1)
   query = applyCommentCursor(query, cursor)
   const { data, error } = await query
-  return toCommentPage((data ?? []) as unknown as CommentWithUser[], error, limit)
+  if (error) return toCommentPage([], error, limit)
+  const counted = await withReplyCounts('post', (data ?? []) as unknown as CommentWithUser[])
+  return toCommentPage(counted.data, counted.error, limit)
 }
 
 export async function fetchCommentReplies(parentCommentId: string, cursor?: CommentCursor | null, limit = 10): Promise<CommentPage<CommentWithUser>> {
   let query = supabase
     .from('comments')
-    .select('*, user:users(id, username, avatar)')
+    .select('*, user:users!comments_user_id_fkey(id, username, avatar)')
     .eq('parent_comment_id', parentCommentId)
     .eq('status', 'visible')
     .order('created_at', { ascending: true })
@@ -395,7 +428,8 @@ export async function fetchCommentReplies(parentCommentId: string, cursor?: Comm
     .limit(limit + 1)
   query = applyCommentCursor(query, cursor)
   const { data, error } = await query
-  return toCommentPage((data ?? []) as unknown as CommentWithUser[], error, limit)
+  if (error) return toCommentPage([], error, limit)
+  return toCommentPage((data ?? []) as unknown as CommentWithUser[], null, limit)
 }
 
 export async function fetchCommentCount(postId: string) {
@@ -407,9 +441,12 @@ export async function createComment(comment: {
   user_id: string
   content: string
   parent_comment_id?: string | null
+  reply_to_comment_id?: string | null
+  reply_to_user_id?: string | null
+  reply_to_name?: string | null
   image_url?: string | null
 }) {
-  return supabase.from('comments').insert(comment).select('*, user:users(id, username, avatar)').single()
+  return supabase.from('comments').insert(comment).select('*, user:users!comments_user_id_fkey(id, username, avatar)').single()
 }
 
 export async function deleteComment(id: string) {
@@ -498,9 +535,9 @@ export async function fetchWeeklyPopularPosts(limit = 20) {
   const ids = rankedRows.map(item => item.post_id)
   const { data: posts, error: postsError } = await supabase
     .from('posts')
-    .select('*, author:users!posts_author_id_fkey(id, username, avatar), series:series(id, name, slug)')
+    .select('*, author:users!posts_author_id_fkey(id, username, avatar), series:series(id, name, slug), likes(count), comments(count)')
     .in('id', ids)
-  const byId = new Map((posts ?? []).map(post => [post.id, post]))
+  const byId = new Map(normalizePostMetrics(posts ?? []).map(post => [post.id, post]))
   return {
     data: rankedRows.flatMap(item => {
       const post = byId.get(item.post_id)
@@ -583,8 +620,26 @@ export async function fetchCommunityPosts({
   search = '',
   sort = 'newest',
   tagSlug,
+  gameVersion,
   authorId,
-}: { page?: number; limit?: number; type?: 'all' | 'discussion' | 'reel' | 'showcase'; viewerId?: string; authorId?: string; collection?: CommunityCollection; search?: string; sort?: CommunitySort; tagSlug?: string } = {}) {
+}: { page?: number; limit?: number; type?: 'all' | 'discussion' | 'reel' | 'showcase'; viewerId?: string; authorId?: string; collection?: CommunityCollection; search?: string; sort?: CommunitySort; tagSlug?: string; gameVersion?: string } = {}) {
+  let popularRanks: CommunityPopularRankRow[] | null = null
+  if (sort === 'popular') {
+    const rankingResult = await supabase.rpc('popular_community_posts', {
+      p_type: type,
+      p_viewer_id: viewerId ?? null,
+      p_author_id: authorId ?? null,
+      p_collection: collection ?? null,
+      p_search: search.trim() || null,
+      p_tag_slug: tagSlug?.trim() || null,
+      p_game_version: gameVersion?.trim() || null,
+      p_limit: limit,
+      p_offset: (page - 1) * limit,
+    })
+    if (rankingResult.error) return { data: null, error: rankingResult.error, count: 0 }
+    popularRanks = (rankingResult.data ?? []) as CommunityPopularRankRow[]
+    if (!popularRanks.length) return { data: [], error: null, count: 0 }
+  }
   let hiddenAuthorIds: string[] = []
   if (viewerId) {
     const { data: relations } = await supabase
@@ -612,6 +667,7 @@ export async function fetchCommunityPosts({
     .order('created_at', { ascending: sort === 'oldest' })
 
   if (type !== 'all') query = query.eq('post_type', type)
+  if (gameVersion?.trim()) query = query.ilike('game_version', gameVersion.trim())
   if (authorId) query = query.eq('author_id', authorId)
   if (collection && viewerId) {
     let relationRows: Array<{ post_id?: string; poll?: { post_id: string } | null }> = []
@@ -641,7 +697,8 @@ export async function fetchCommunityPosts({
     query = query.in('id', tagPostIds)
   }
   if (hiddenAuthorIds.length) query = query.not('author_id', 'in', `(${hiddenAuthorIds.join(',')})`)
-  const result = await query.range((page - 1) * limit, page * limit - 1)
+  if (popularRanks) query = query.in('id', popularRanks.map(row => row.post_id))
+  const result = popularRanks ? await query : await query.range((page - 1) * limit, page * limit - 1)
   if (result.error) return result as unknown as { data: CommunityPostWithDetails[] | null; error: Error | null; count: number | null }
   const rows = ((result.data ?? []) as unknown as CommunityPostWithDetails[])
   const reactionResult = rows.length
@@ -653,9 +710,37 @@ export async function fetchCommunityPosts({
     current.push({ reaction: row.reaction, count: Number(row.count) })
     reactionByPost.set(row.post_id, current)
   }
-  const enrichedRows = rows.map(row => ({ ...row, reactions: reactionByPost.get(row.id) ?? [] }))
-  if (sort === 'popular') enrichedRows.sort((left, right) => (right.likes?.[0]?.count ?? 0) - (left.likes?.[0]?.count ?? 0))
-  return { data: enrichedRows, error: null, count: result.count }
+  const rankByPost = new Map((popularRanks ?? []).map(rank => [rank.post_id, rank]))
+  const enrichedRows = rows.map(row => {
+    const rank = rankByPost.get(row.id)
+    return {
+      ...row,
+      reactions: reactionByPost.get(row.id) ?? [],
+      ...(rank ? {
+        popular_score: Number(rank.popular_score),
+        quality_score: Number(rank.quality_score),
+        share_count: Number(rank.share_count),
+        community_view_count: Number(rank.view_count),
+      } : {}),
+    }
+  })
+  if (popularRanks) enrichedRows.sort((left, right) => (rankByPost.get(right.id)?.popular_score ?? 0) - (rankByPost.get(left.id)?.popular_score ?? 0))
+  return { data: enrichedRows, error: null, count: popularRanks?.[0]?.total_count ?? result.count }
+}
+
+export async function recordCommunityPostView(postId: string) {
+  return supabase.rpc('record_community_post_view', {
+    p_post_id: postId,
+    p_visitor_key: getCommunityDeviceFingerprint(),
+  })
+}
+
+export async function recordCommunityPostShare(postId: string, platform: 'native' | 'copy' | 'facebook' | 'messenger' | 'x' | 'telegram' | 'zalo' | 'other' = 'other') {
+  return supabase.rpc('record_community_post_share', {
+    p_post_id: postId,
+    p_platform: platform,
+    p_visitor_key: getCommunityDeviceFingerprint(),
+  })
 }
 
 export async function createCommunityPost(data: {
@@ -784,6 +869,16 @@ export async function updateCommunityPost(postId: string, authorId: string, upda
   return result
 }
 
+export async function fetchCommunityGameVersions(limit = 20) {
+  const { data, error } = await supabase.rpc('community_game_versions', { p_limit: limit })
+  return { data: (data ?? []) as CommunityGameVersionRow[], error }
+}
+
+export async function fetchWeeklyCommunityCreators(limit = 8) {
+  const { data, error } = await supabase.rpc('weekly_community_creator_ranking', { p_limit: limit })
+  return { data: (data ?? []) as WeeklyCommunityCreatorRow[], error }
+}
+
 export async function fetchCommunityPollVote(postId: string, userId?: string) {
   if (!userId) return { data: null, error: null }
   const pollResult = await supabase.from('community_post_polls').select('id').eq('post_id', postId).maybeSingle()
@@ -812,7 +907,10 @@ export async function fetchCommunityComments(postId: string, cursor?: CommentCur
   query = parentCommentId ? query.eq('parent_comment_id', parentCommentId) : query.is('parent_comment_id', null)
   query = applyCommentCursor(query, cursor)
   const { data, error } = await query
-  return toCommentPage((data ?? []) as unknown as CommunityCommentWithUser[], error, limit)
+  if (error) return toCommentPage([], error, limit)
+  if (parentCommentId) return toCommentPage((data ?? []) as unknown as CommunityCommentWithUser[], null, limit)
+  const counted = await withReplyCounts('community', (data ?? []) as unknown as CommunityCommentWithUser[])
+  return toCommentPage(counted.data, counted.error, limit)
 }
 
 export async function fetchCommunityCommentCount(postId: string) {
@@ -853,6 +951,9 @@ export async function createCommunityComment(data: {
   user_id: string
   content: string
   parent_comment_id?: string | null
+  reply_to_comment_id?: string | null
+  reply_to_user_id?: string | null
+  reply_to_name?: string | null
   image_url?: string | null
   display_name_mode?: 'account' | 'anonymous' | 'alias'
   display_name?: string | null
@@ -913,6 +1014,16 @@ export async function fetchCommunityUserRelations(followerId: string, targetUser
   const { data, error } = await supabase.from('community_user_relations').select('relation_type').eq('follower_id', followerId).eq('target_user_id', targetUserId)
   const relations = new Set((data ?? []).map(item => item.relation_type))
   return { isFollowing: relations.has('follow'), isMuted: relations.has('mute'), isBlocked: relations.has('block'), error }
+}
+
+export async function fetchCommunityTagFollowState(userId: string, tagId: string) {
+  const { data, error } = await supabase.from('community_tag_follows').select('tag_id').eq('user_id', userId).eq('tag_id', tagId).maybeSingle()
+  return { isFollowing: Boolean(data), error }
+}
+
+export async function toggleCommunityTagFollow(userId: string, tagId: string, isFollowing: boolean) {
+  if (isFollowing) return supabase.from('community_tag_follows').delete().eq('user_id', userId).eq('tag_id', tagId)
+  return supabase.from('community_tag_follows').insert({ user_id: userId, tag_id: tagId })
 }
 
 export async function submitContentReport(data: {
@@ -1012,17 +1123,18 @@ export async function deleteTimelineEvent(id: string) {
 
 // ---- NOTIFICATIONS ----
 
-export async function fetchNotifications(userId: string, limit = 20) {
-  return supabase
-    .from('notifications')
-    .select('*')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false })
-    .limit(limit)
+export async function fetchNotifications(userId: string, limit = 30, filter: 'all' | 'unread' | 'mention' | 'replies' = 'all') {
+  void userId
+  const { data, error } = await supabase.rpc('grouped_notifications', { p_limit: limit, p_filter: filter })
+  return { data: (data ?? []) as GroupedNotificationRow[], error }
 }
 
 export async function markNotificationRead(id: string) {
   return supabase.from('notifications').update({ is_read: true }).eq('id', id)
+}
+
+export async function markNotificationGroupRead(notificationIds: string[]) {
+  return supabase.rpc('mark_notification_group_read', { p_notification_ids: notificationIds })
 }
 
 export async function markAllNotificationsRead(userId: string) {
@@ -1076,8 +1188,53 @@ export async function runAdminSecurityAction(action: 'lock' | 'unlock' | 'revoke
   return { data, error: null }
 }
 
-export async function fetchAuditLogs(limit = 100) {
-  return supabase.from('audit_logs').select('*, actor:users!audit_logs_actor_id_fkey(username, avatar)').order('created_at', { ascending: false }).limit(limit)
+export async function fetchAuditLogs({ page = 1, limit = 25, action, entityType, search, sort = 'newest' }: { page?: number; limit?: number; action?: string; entityType?: string; search?: string; sort?: 'newest' | 'oldest' } = {}) {
+  let query = supabase
+    .from('audit_logs')
+    .select('*, actor:users!audit_logs_actor_id_fkey(username, avatar)', { count: 'exact' })
+    .order('created_at', { ascending: sort === 'oldest' })
+    .range((page - 1) * limit, page * limit - 1)
+  if (action) query = query.eq('action', action)
+  if (entityType) query = query.eq('entity_type', entityType)
+  const cleanSearch = search?.trim().replace(/[%,]/g, ' ')
+  if (cleanSearch) query = query.or(`action.ilike.%${cleanSearch}%,entity_type.ilike.%${cleanSearch}%`)
+  const result = await query
+  return { ...result, data: (result.data ?? []) as AuditLogRow[] }
+}
+
+export async function fetchAuditLogSummary(days = 30) {
+  const { data, error } = await supabase.rpc('admin_audit_summary', { p_days: days })
+  return { data: (data ?? {}) as { total?: number; period_total?: number; last_24h?: number; destructive?: number; unique_actors?: number; top_action?: string; top_entity?: string }, error }
+}
+
+export async function fetchAdminComments({ page = 1, limit = 20, status, commentType, search, sort = 'newest' }: { page?: number; limit?: number; status?: string; commentType?: 'post' | 'community'; search?: string; sort?: 'newest' | 'oldest' } = {}) {
+  const { data, error } = await supabase.rpc('admin_comment_feed', {
+    p_limit: limit,
+    p_offset: (page - 1) * limit,
+    p_status: status || null,
+    p_comment_type: commentType || null,
+    p_search: search?.trim() || null,
+    p_sort: sort,
+  })
+  return { data: (data ?? []) as AdminModerationCommentRow[], error }
+}
+
+export async function fetchCommentRevisions(commentType: 'post' | 'community', commentId: string) {
+  const { data, error } = await supabase
+    .from('comment_revisions')
+    .select('*')
+    .eq('comment_type', commentType)
+    .eq('comment_id', commentId)
+    .order('created_at', { ascending: false })
+  return { data: (data ?? []) as CommentRevisionRow[], error }
+}
+
+export async function moderateCommentImage(commentType: 'post' | 'community', commentId: string, hidden: boolean) {
+  return supabase.rpc('moderate_comment_image', { p_comment_type: commentType, p_comment_id: commentId, p_hidden: hidden })
+}
+
+export async function moderateCommentRecord(commentType: 'post' | 'community', commentId: string, action: 'hide' | 'restore' | 'delete') {
+  return supabase.rpc('moderate_comment_record', { p_comment_type: commentType, p_comment_id: commentId, p_action: action })
 }
 
 export async function fetchContentReports() {

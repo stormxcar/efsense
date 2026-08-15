@@ -45,6 +45,7 @@ const AdminEditorialCalendar = lazy(() => import('@/pages/admin/AdminEditorialCa
 const AdminMediaLibrary = lazy(() => import('@/pages/admin/AdminMediaLibrary'))
 const AdminPostRevisions = lazy(() => import('@/pages/admin/AdminPostRevisions'))
 const AdminSecurity = lazy(() => import('@/pages/admin/AdminSecurity'))
+const AdminRolePermissions = lazy(() => import('@/pages/admin/AdminRolePermissions'))
 
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
@@ -118,6 +119,7 @@ function AppRoutes() {
           <Route path="calendar" element={<S><AdminEditorialCalendar /></S>} />
           <Route path="media-library" element={<S><AdminMediaLibrary /></S>} />
           <Route path="security" element={<S><AdminSecurity /></S>} />
+          <Route path="roles" element={<S><AdminRolePermissions /></S>} />
         </Route>
 
         {/* 404 */}

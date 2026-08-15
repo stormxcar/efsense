@@ -5,6 +5,7 @@ import Reveal from '@/components/Reveal'
 import { fetchPosts } from '@/services/api'
 import type { PostWithDetails } from '@/types/database'
 import YouTubeVideo from '@/components/YouTubeVideo'
+import { cloudinaryImageSrcSet, cloudinaryResponsiveImageUrl } from '@/lib/cloudinary'
 
 export default function MediaPage() {
   const { data, isLoading } = useQuery({
@@ -51,7 +52,7 @@ export default function MediaPage() {
             {posts.map((post, index) => (
               <Reveal key={post.id} delay={(index % 3) * 70}>
                 <Link to={`/posts/${post.slug}`} className="media-tile">
-                  <img src={post.cover_image || undefined} alt={post.title} loading="lazy" decoding="async" />
+                  <img src={post.cover_image ? cloudinaryResponsiveImageUrl(post.cover_image, 720) : undefined} srcSet={post.cover_image ? cloudinaryImageSrcSet(post.cover_image, [320, 480, 720, 960]) : undefined} sizes="(max-width: 767px) 50vw, 25vw" alt={post.title} loading="lazy" decoding="async" />
                   <div>
                     <span>{index + 1 < 10 ? `0${index + 1}` : index + 1}</span>
                     <h3>{post.title}</h3>

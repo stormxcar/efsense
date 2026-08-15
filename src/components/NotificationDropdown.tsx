@@ -1,13 +1,14 @@
-import { Bell, BookOpen, CheckCheck, FileText, Heart, MessageSquare, Share2, type LucideIcon } from 'lucide-react'
+import { useState } from 'react'
+import { AtSign, Bell, BookOpen, CheckCheck, FileText, Heart, Inbox, MessageSquare, Reply, Share2, type LucideIcon } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   fetchNotifications,
-  markNotificationRead,
+  markNotificationGroupRead,
   markAllNotificationsRead,
 } from '@/services/api'
 import { formatRelativeDate } from '@/utils'
-import type { NotificationRow } from '@/types/database'
+import type { GroupedNotificationRow } from '@/types/database'
 
 const NOTIF_ICONS: Record<string, LucideIcon> = {
   new_post: FileText,
@@ -32,14 +33,15 @@ interface Props {
 export default function NotificationDropdown({ userId, onClose }: Props) {
   const qc = useQueryClient()
   const navigate = useNavigate()
-  const { data: notifications = [] } = useQuery({
-    queryKey: ['notifications', userId],
-    queryFn: () => fetchNotifications(userId).then((r) => r.data ?? []),
+  const [filter, setFilter] = useState<'all' | 'unread' | 'mention' | 'replies'>('all')
+  const { data: notifications = [], isLoading, isError } = useQuery({
+    queryKey: ['notifications', userId, filter],
+    queryFn: () => fetchNotifications(userId, 30, filter).then((r) => { if (r.error) throw r.error; return r.data }),
     refetchInterval: false,
   })
 
   const markRead = useMutation({
-    mutationFn: (id: string) => markNotificationRead(id).then(() => {}),
+    mutationFn: (ids: string[]) => markNotificationGroupRead(ids).then(() => {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications', userId] }),
   })
 
@@ -48,7 +50,13 @@ export default function NotificationDropdown({ userId, onClose }: Props) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications', userId] }),
   })
 
-  const unread = notifications.filter((n: NotificationRow) => !n.is_read).length
+  const unread = notifications.reduce((total, notification) => total + (!notification.is_read ? notification.group_count : 0), 0)
+  const filters = [
+    { id: 'all' as const, label: 'Tất cả', Icon: Inbox },
+    { id: 'unread' as const, label: 'Chưa đọc', Icon: Bell },
+    { id: 'mention' as const, label: 'Được nhắc', Icon: AtSign },
+    { id: 'replies' as const, label: 'Phản hồi', Icon: Reply },
+  ]
 
   return (
     <div
@@ -74,21 +82,25 @@ export default function NotificationDropdown({ userId, onClose }: Props) {
         )}
       </div>
 
+      <div className="notification-filters" role="tablist" aria-label="Lọc thông báo">
+        {filters.map(item => <button key={item.id} type="button" role="tab" aria-selected={filter === item.id} className={filter === item.id ? 'active' : ''} onClick={() => setFilter(item.id)}><item.Icon size={12} /> {item.label}</button>)}
+      </div>
+
       <div className="overflow-y-auto flex-1">
-        {notifications.length === 0 ? (
+        {isLoading ? <div className="p-4 space-y-2">{[1, 2, 3].map(item => <div key={item} className="skeleton h-16 rounded-lg" />)}</div> : isError ? <div className="py-8 px-4 text-center text-xs" style={{ color: '#f59e0b' }}>Không thể tải thông báo. Vui lòng thử lại.</div> : notifications.length === 0 ? (
           <div className="py-10 text-center" style={{ color: 'var(--text-muted)' }}>
             <Bell size={28} className="mx-auto mb-2 opacity-30" />
             <p className="text-sm">Chưa có thông báo</p>
           </div>
         ) : (
-          notifications.map((n: NotificationRow) => {
+          notifications.map((n: GroupedNotificationRow) => {
             const NotificationIcon = NOTIF_ICONS[n.type] ?? Bell
             return <div
               key={n.id}
               className={`flex items-start gap-3 px-4 py-3 border-b cursor-pointer transition-colors hover:bg-white/5 ${!n.is_read ? 'bg-blue-500/5' : ''}`}
               style={{ borderColor: 'rgba(255,255,255,0.04)' }}
               onClick={() => {
-                if (!n.is_read) markRead.mutate(n.id)
+                if (!n.is_read) markRead.mutate(n.notification_ids)
                 if (n.link) { onClose(); navigate(n.link) }
               }}
             >
@@ -98,7 +110,7 @@ export default function NotificationDropdown({ userId, onClose }: Props) {
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold truncate">{n.title}</p>
                 {n.body && <p className="text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--text-secondary)' }}>{n.body}</p>}
-                <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>{formatRelativeDate(n.created_at)}</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>{formatRelativeDate(n.created_at)}{n.group_count > 1 ? ` · ${n.group_count} hoạt động được gom` : ''}</p>
               </div>
               {!n.is_read && (
                 <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0 mt-1.5" />

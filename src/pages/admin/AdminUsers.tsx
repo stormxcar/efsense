@@ -1,8 +1,9 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { createManagedUser, updateUserRole, runAdminSecurityAction } from '@/services/api'
-import { UserX, UserCheck, Trash2, PlusCircle, UserPlus, LogOut } from 'lucide-react'
+import { UserX, UserCheck, Trash2, PlusCircle, UserPlus, LogOut, BadgeCheck } from 'lucide-react'
 import { formatDate, getInitials } from '@/utils'
 import Tooltip from '@/components/Tooltip'
 import toast from 'react-hot-toast'
@@ -11,6 +12,7 @@ import { requiredText, validateAdminEmail, validatePassword } from '@/utils/vali
 import type { UserRow } from '@/types/database'
 import ConfirmModal from '@/components/ConfirmModal'
 import AdminListSearch from '@/components/AdminListSearch'
+import RolePermissionGuide from '@/components/RolePermissionGuide'
 
 export default function AdminUsers() {
   const { user: currentUser } = useAuth()
@@ -96,7 +98,8 @@ export default function AdminUsers() {
     <div className="p-8">
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-family-display)' }}>Quản lý người dùng</h1>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <Link to="/admin/roles" className="btn-secondary text-sm"><BadgeCheck size={15} /> Xem quyền vai trò</Link>
           <AdminListSearch value={search} onChange={value => { setSearch(value); setPage(1) }} placeholder="Tìm người dùng..." storageKey="football-stories-admin-users-search" suggestions={['admin', 'editor', 'moderator', 'contributor']} />
           <select value={roleFilter} onChange={event => { setRoleFilter(event.target.value as typeof roleFilter); setPage(1) }} className="input h-9 w-auto text-sm" aria-label="Lọc vai trò người dùng">
             <option value="all">Tất cả vai trò</option>
@@ -145,12 +148,15 @@ export default function AdminUsers() {
             </div>
             <div>
               <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Vai trò</label>
-              <select value={newUserForm.role} onChange={e => setNewUserForm(f => ({ ...f, role: e.target.value as 'user' | 'admin' }))}
+              <select value={newUserForm.role} onChange={e => setNewUserForm(f => ({ ...f, role: e.target.value as UserRow['role'] }))}
                 className="input text-sm">
                 <option value="user">Người dùng</option>
                 <option value="admin">Quản trị viên</option><option value="editor">Biên tập viên</option><option value="moderator">Kiểm duyệt viên</option><option value="contributor">Cộng tác viên</option>
               </select>
             </div>
+          </div>
+          <div className="mt-5">
+            <RolePermissionGuide selectedRole={newUserForm.role} compact />
           </div>
           <div className="flex gap-2 mt-5">
             <button onClick={() => createUserMutation.mutate()}

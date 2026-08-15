@@ -38,6 +38,17 @@ export function optimizeCloudinaryDeliveryUrl(url: string, resourceType: 'image'
   return url.replace('/upload/', `/upload/${transformation}/`)
 }
 
+export function cloudinaryResponsiveImageUrl(url: string, width = 960) {
+  if (!url.includes('res.cloudinary.com') || !url.includes('/image/upload/')) return url
+  const safeWidth = Math.min(2400, Math.max(160, Math.round(width / 80) * 80))
+  return url.replace('/image/upload/', `/image/upload/c_limit,w_${safeWidth},dpr_auto,f_auto,q_auto:eco/`)
+}
+
+export function cloudinaryImageSrcSet(url: string, widths: number[] = [320, 640, 960, 1280, 1600]) {
+  if (!url.includes('res.cloudinary.com') || !url.includes('/image/upload/')) return undefined
+  return [...new Set(widths)].sort((left, right) => left - right).map(width => `${cloudinaryResponsiveImageUrl(url, width)} ${width}w`).join(', ')
+}
+
 export function cloudinaryVideoPosterUrl(url: string) {
   if (!url.includes('res.cloudinary.com') || !url.includes('/video/upload/')) return url
   return url

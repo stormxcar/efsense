@@ -22,6 +22,7 @@ import ReadingProgress from '@/components/ReadingProgress'
 import type { PostWithDetails } from '@/types/database'
 import ArticleSeo from '@/components/ArticleSeo'
 import PostGallery from '@/components/PostGallery'
+import { cloudinaryImageSrcSet, cloudinaryResponsiveImageUrl } from '@/lib/cloudinary'
 
 type PostInteractions = {
   isLiked: boolean
@@ -254,9 +255,13 @@ export default function PostDetailPage() {
         {post.cover_image && (
           <div className="rounded-2xl overflow-hidden mb-10">
             <img
-              src={post.cover_image}
+              src={cloudinaryResponsiveImageUrl(post.cover_image, 1600)}
+              srcSet={cloudinaryImageSrcSet(post.cover_image, [480, 720, 960, 1280, 1600, 2000])}
+              sizes="(max-width: 1024px) 100vw, 72rem"
               alt={post.image_alt || post.title}
               className="w-full object-cover max-h-[500px]"
+              fetchPriority="high"
+              decoding="async"
             />
           </div>
         )}

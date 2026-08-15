@@ -39,6 +39,18 @@ export function sanitizeHtml(html: string): string {
         }
       })
       if (element.tagName === 'A') element.setAttribute('rel', 'noopener noreferrer')
+      if (element.tagName === 'IMG') {
+        const image = element as HTMLImageElement
+        if (image.src) {
+          const originalSource = image.getAttribute('src') ?? image.src
+          image.src = cloudinaryResponsiveImageUrl(originalSource, 1280)
+          const sourceSet = cloudinaryImageSrcSet(originalSource, [360, 640, 960, 1280, 1600])
+          if (sourceSet) image.srcset = sourceSet
+          image.sizes = '(max-width: 1024px) 92vw, 52rem'
+          image.loading = 'lazy'
+          image.decoding = 'async'
+        }
+      }
       walk(element)
     })
   }
@@ -46,3 +58,4 @@ export function sanitizeHtml(html: string): string {
   walk(template.content)
   return template.innerHTML
 }
+import { cloudinaryImageSrcSet, cloudinaryResponsiveImageUrl } from '@/lib/cloudinary'

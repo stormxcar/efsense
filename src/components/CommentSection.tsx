@@ -20,16 +20,24 @@ import type { CommentWithUser } from '@/types/database'
 import toast from 'react-hot-toast'
 import { useProcessing } from '@/hooks/useProcessing'
 import ConfirmModal from '@/components/ConfirmModal'
+import { cloudinaryImageSrcSet, cloudinaryResponsiveImageUrl } from '@/lib/cloudinary'
 
 interface Props {
   postId: string
   currentUser: { id: string; username: string; avatar: string | null; role: string } | null
 }
 
+type ReplyTarget = {
+  parentId: string
+  commentId: string
+  userId: string
+  username: string
+}
+
 export default function CommentSection({ postId, currentUser }: Props) {
   const qc = useQueryClient()
   const [content, setContent] = useState('')
-  const [replyTo, setReplyTo] = useState<{ id: string; username: string } | null>(null)
+  const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null)
   const [image, setImage] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -40,7 +48,10 @@ export default function CommentSection({ postId, currentUser }: Props) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const uploadedImageRef = useRef<{ signature: string; url: string; publicId: string } | null>(null)
+  const [draftReady, setDraftReady] = useState(false)
   const process = useProcessing()
+  const draftKey = currentUser ? `football-stories-comment-draft:${postId}:${currentUser.id}` : null
 
   const commentsQuery = useInfiniteQuery({
     queryKey: ['comments', postId],
@@ -64,6 +75,30 @@ export default function CommentSection({ postId, currentUser }: Props) {
     if (imagePreview?.startsWith('blob:')) URL.revokeObjectURL(imagePreview)
   }, [imagePreview])
 
+  useEffect(() => {
+    setDraftReady(false)
+    setContent('')
+    setReplyTo(null)
+    if (!draftKey) return
+    try {
+      const saved = JSON.parse(localStorage.getItem(draftKey) ?? 'null') as { content?: string; replyTo?: ReplyTarget | null } | null
+      if (saved?.content) setContent(saved.content)
+      if (saved?.replyTo?.parentId) setReplyTo(saved.replyTo)
+    } catch {
+      localStorage.removeItem(draftKey)
+    }
+    setDraftReady(true)
+  }, [draftKey])
+
+  useEffect(() => {
+    if (!draftKey || !draftReady) return
+    const timer = window.setTimeout(() => {
+      if (content.trim() || replyTo) localStorage.setItem(draftKey, JSON.stringify({ content, replyTo, savedAt: Date.now() }))
+      else localStorage.removeItem(draftKey)
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [content, draftKey, draftReady, replyTo])
+
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -73,6 +108,7 @@ export default function CommentSection({ postId, currentUser }: Props) {
       return
     }
     if (imagePreview?.startsWith('blob:')) URL.revokeObjectURL(imagePreview)
+    uploadedImageRef.current = null
     setImage(file)
     setImagePreview(URL.createObjectURL(file))
   }
@@ -94,7 +130,10 @@ export default function CommentSection({ postId, currentUser }: Props) {
         let image_url: string | null = null
         let imagePublicId: string | null = null
         if (image) {
-          const uploaded = await uploadCommentImage(image, currentUser.id)
+          const signature = `${image.name}:${image.size}:${image.lastModified}`
+          const cached = uploadedImageRef.current?.signature === signature ? uploadedImageRef.current : null
+          const uploaded: { signature: string; url: string; publicId: string } = cached || { signature, ...await uploadCommentImage(image, currentUser.id) }
+          uploadedImageRef.current = uploaded
           image_url = uploaded.url
           imagePublicId = uploaded.publicId
         }
@@ -102,7 +141,10 @@ export default function CommentSection({ postId, currentUser }: Props) {
           post_id: postId,
           user_id: currentUser.id,
           content: content.trim(),
-          parent_comment_id: replyTo?.id ?? null,
+          parent_comment_id: replyTo?.parentId ?? null,
+          reply_to_comment_id: replyTo?.commentId ?? null,
+          reply_to_user_id: replyTo?.userId ?? null,
+          reply_to_name: replyTo?.username ?? null,
           image_url,
         })
         if (result.error) throw result.error
@@ -114,10 +156,12 @@ export default function CommentSection({ postId, currentUser }: Props) {
       if (imagePreview?.startsWith('blob:')) URL.revokeObjectURL(imagePreview)
       setImage(null)
       setImagePreview(null)
+      uploadedImageRef.current = null
       setReplyTo(null)
       setHumanCheckRequired(false)
       setHumanCheck(false)
       startedAt.current = Date.now()
+      if (draftKey) localStorage.removeItem(draftKey)
       await qc.invalidateQueries({ queryKey: ['comments', postId] })
       await qc.invalidateQueries({ queryKey: ['comment-replies'] })
       await qc.invalidateQueries({ queryKey: ['comment-count', postId] })
@@ -170,54 +214,44 @@ export default function CommentSection({ postId, currentUser }: Props) {
           )}
           <div className="flex gap-3">
             {currentUser.avatar ? (
-              <img src={currentUser.avatar} alt={currentUser.username} className="w-9 h-9 rounded-lg shrink-0" />
+              <img src={cloudinaryResponsiveImageUrl(currentUser.avatar, 96)} alt={currentUser.username} className="w-9 h-9 rounded-lg shrink-0" />
             ) : (
               <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0"
                 style={{ background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)' }}>
                 {getInitials(currentUser.username)}
               </div>
             )}
-            <div className="flex-1 space-y-3">
+            <div className="flex-1 space-y-3 min-w-0">
               <input className="comment-honeypot" value={honeypot} onChange={e => setHoneypot(e.target.value)} tabIndex={-1} autoComplete="off" aria-hidden="true" />
-              <textarea
-                ref={textareaRef}
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder="Viết bình luận..."
-                rows={3}
-                className="input resize-none"
-                maxLength={1000}
-              />
+              <div className="article-comment-composer">
+                <textarea
+                  ref={textareaRef}
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  placeholder="Viết bình luận..."
+                  rows={2}
+                  className="article-comment-input"
+                  maxLength={1000}
+                />
+                <button type="button" onClick={() => fileRef.current?.click()} className="article-comment-tool" title="Đính kèm ảnh" aria-label="Thêm ảnh"><ImageIcon size={17} /></button>
+                <button type="submit" disabled={submitting || !content.trim()} className="article-comment-send" aria-label="Đăng bình luận">
+                  {submitting ? <span className="animate-spin inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full" /> : <Send size={16} />}
+                </button>
+                <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleImageChange} />
+              </div>
               {imagePreview && (
                 <div className="relative inline-block">
                   <img src={imagePreview} alt="preview" className="max-h-32 rounded-lg" />
                   <button
                     type="button"
-                    onClick={() => { setImage(null); setImagePreview(null) }}
+                    onClick={() => { setImage(null); setImagePreview(null); uploadedImageRef.current = null }}
                     className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 flex items-center justify-center"
                   >
                     <X size={12} />
                   </button>
                 </div>
               )}
-              <div className="flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  className="btn-ghost text-xs px-2 py-1"
-                  title="Đính kèm ảnh"
-                >
-                  <ImageIcon size={15} /> Ảnh
-                </button>
-                <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleImageChange} />
-                <button
-                  type="submit"
-                  disabled={submitting || !content.trim()}
-                  className="btn-primary text-sm px-4 py-2"
-                >
-                  {submitting ? <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" /> : <><Send size={14} /> Đăng</>}
-                </button>
-              </div>
+              <small style={{ color: 'var(--text-muted)' }}>Nội dung được lưu nháp tự động</small>
             </div>
           </div>
         </form>
@@ -256,14 +290,14 @@ export default function CommentSection({ postId, currentUser }: Props) {
           <p>Chưa có bình luận. Hãy bắt đầu cuộc trò chuyện.</p>
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-6 comment-virtual-list">
           {comments.map((comment: CommentWithUser) => (
             <CommentItem
               key={comment.id}
               comment={comment}
               currentUser={currentUser}
-              onReply={(id, username) => {
-                setReplyTo({ id, username })
+              onReply={(target) => {
+                setReplyTo(target)
                 textareaRef.current?.focus()
               }}
               onDelete={id => setConfirmDeleteId(id)}
@@ -287,7 +321,7 @@ function CommentItem({
 }: {
   comment: CommentWithUser
   currentUser: { id: string; role: string } | null
-  onReply: (id: string, username: string) => void
+  onReply: (target: ReplyTarget) => void
   onDelete: (id: string) => void
   onHide: (id: string) => void
   postId: string
@@ -296,9 +330,9 @@ function CommentItem({
   const isOwn = currentUser?.id === comment.user_id
   const isAdmin = currentUser?.role === 'admin'
   return (
-    <div className={`flex gap-3 ${depth > 0 ? 'ml-12 mt-4' : ''}`}>
+    <div className={`flex gap-3 comment-virtual-item ${depth > 0 ? 'is-comment-reply mt-3' : ''}`}>
       {comment.user?.avatar ? (
-        <img src={comment.user.avatar} alt={comment.user.username} className="w-9 h-9 rounded-lg shrink-0 object-cover" />
+        <img src={cloudinaryResponsiveImageUrl(comment.user.avatar, 96)} alt={comment.user.username} className="w-9 h-9 rounded-lg shrink-0 object-cover" />
       ) : (
         <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0"
           style={{ background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)' }}>
@@ -311,15 +345,16 @@ function CommentItem({
           <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{formatRelativeDate(comment.created_at)}</span>
         </div>
         <div className="card p-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
-          <p className="whitespace-pre-wrap">{comment.content}</p>
-          {comment.image_url && (
-            <img src={comment.image_url} alt="comment attachment" className="mt-2 max-h-48 rounded-lg" />
+          <p className="whitespace-pre-wrap">{comment.reply_to_name && <strong className="comment-reply-mention">@{comment.reply_to_name} </strong>}{comment.content}</p>
+          {comment.image_url && comment.image_status !== 'hidden' && (
+            <img src={cloudinaryResponsiveImageUrl(comment.image_url, 720)} srcSet={cloudinaryImageSrcSet(comment.image_url, [320, 480, 720, 960])} sizes="(max-width: 640px) 88vw, 720px" alt="Ảnh đính kèm bình luận" className="mt-2 max-h-48 rounded-lg" loading="lazy" decoding="async" />
           )}
+          {comment.image_url && comment.image_status === 'hidden' && <p className="mt-2 text-xs" style={{ color: 'var(--text-muted)' }}>Ảnh đã được đội ngũ kiểm duyệt ẩn.</p>}
         </div>
         <div className="flex items-center gap-3 mt-2">
-          {depth < 4 && currentUser && (
+          {currentUser && (
             <button
-              onClick={() => onReply(comment.id, comment.user?.username ?? '')}
+              onClick={() => onReply({ parentId: comment.parent_comment_id ?? comment.id, commentId: comment.id, userId: comment.user_id, username: comment.user?.username ?? 'Thành viên' })}
               className="btn-ghost text-xs px-2 py-1 flex items-center gap-1"
             >
               <Reply size={12} /> Trả lời
@@ -332,25 +367,25 @@ function CommentItem({
           )}
           {isAdmin && !isOwn && (
             <button onClick={() => onHide(comment.id)} className="btn-ghost text-xs px-2 py-1 flex items-center gap-1" style={{ color: '#fb923c' }}>
-              <EyeOff size={12} /> Hide
+              <EyeOff size={12} /> Ẩn
             </button>
           )}
         </div>
 
-        {depth < 4 && <CommentReplies parentId={comment.id} postId={postId} currentUser={currentUser} onReply={onReply} onDelete={onDelete} onHide={onHide} depth={depth} />}
+        {depth === 0 && (comment.reply_count ?? 0) > 0 && <CommentReplies parentId={comment.id} postId={postId} replyCount={comment.reply_count ?? 0} currentUser={currentUser} onReply={onReply} onDelete={onDelete} onHide={onHide} />}
       </div>
     </div>
   )
 }
 
-function CommentReplies({ parentId, postId, currentUser, onReply, onDelete, onHide, depth }: {
+function CommentReplies({ parentId, postId, replyCount, currentUser, onReply, onDelete, onHide }: {
   parentId: string
   postId: string
+  replyCount: number
   currentUser: { id: string; role: string } | null
-  onReply: (id: string, username: string) => void
+  onReply: (target: ReplyTarget) => void
   onDelete: (id: string) => void
   onHide: (id: string) => void
-  depth: number
 }) {
   const [expanded, setExpanded] = useState(false)
   const query = useInfiniteQuery({
@@ -366,12 +401,13 @@ function CommentReplies({ parentId, postId, currentUser, onReply, onDelete, onHi
   })
   const replies = query.data?.pages.flatMap(page => page.data) ?? []
 
-  if (!expanded) return <button type="button" className="btn-ghost text-xs px-1 py-1" onClick={() => setExpanded(true)}>Xem phản hồi</button>
+  if (!expanded) return <button type="button" className="btn-ghost text-xs px-1 py-1" onClick={() => setExpanded(true)}>Xem {replyCount} phản hồi</button>
   if (query.isError) return <div className="mt-2 text-xs" style={{ color: '#f59e0b' }}>Không thể tải phản hồi. <button type="button" className="btn-ghost text-xs px-1" onClick={() => void query.refetch()}>Thử lại</button></div>
   return (
     <div className="mt-3 space-y-3 pl-4 border-l-2" style={{ borderColor: 'rgba(59,130,246,0.2)' }}>
+      <button type="button" className="btn-ghost text-xs px-1" onClick={() => setExpanded(false)}>Ẩn phản hồi</button>
       {query.isLoading && <div className="skeleton h-10 rounded-lg" />}
-      {replies.map(reply => <CommentItem key={reply.id} comment={reply} currentUser={currentUser} onReply={onReply} onDelete={onDelete} onHide={onHide} postId={postId} depth={depth + 1} />)}
+      {replies.map(reply => <CommentItem key={reply.id} comment={reply} currentUser={currentUser} onReply={onReply} onDelete={onDelete} onHide={onHide} postId={postId} depth={1} />)}
       {!query.isLoading && replies.length === 0 && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Chưa có phản hồi.</p>}
       {query.hasNextPage && <button type="button" className="btn-ghost text-xs" onClick={() => void query.fetchNextPage()} disabled={query.isFetchingNextPage}>{query.isFetchingNextPage ? 'Đang tải...' : 'Tải thêm phản hồi'}</button>}
     </div>
