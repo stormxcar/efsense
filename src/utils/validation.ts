@@ -42,6 +42,21 @@ export function validateAdminEmail(value: string): string {
   return email
 }
 
+export function validateEmail(value: string): string {
+  const email = value.trim().toLowerCase()
+  if (!email) throw new Error('Vui lòng nhập email')
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw new Error('Email cần có dạng ten@mien.com')
+  return email
+}
+
+export function validateUsername(value: string): string {
+  const username = cleanText(value)
+  if (username.length < 3) throw new Error('Tên hiển thị cần ít nhất 3 ký tự')
+  if (username.length > 30) throw new Error('Tên hiển thị không được vượt quá 30 ký tự')
+  if (!/^[\p{L}\p{N} _.-]+$/u.test(username)) throw new Error('Tên hiển thị chỉ nên gồm chữ, số, khoảng trắng, dấu chấm hoặc gạch ngang')
+  return username
+}
+
 export function validatePassword(value: string): string {
   if (value.length < 8 || value.length > 72) throw new Error('Mật khẩu phải dài từ 8 đến 72 ký tự')
   if (!/[A-Za-z]/.test(value) || !/[0-9]/.test(value)) throw new Error('Mật khẩu cần có cả chữ và số')

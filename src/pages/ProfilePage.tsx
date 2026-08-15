@@ -121,7 +121,7 @@ export default function ProfilePage() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
           <div className="relative">
             {avatarPreview || user.avatar ? (
-              <img src={avatarPreview || user.avatar || ''} alt={user.username} className="w-24 h-24 rounded-2xl object-cover" />
+              <img src={avatarPreview || user.avatar || undefined} alt={user.username} className="w-24 h-24 rounded-2xl object-cover" />
             ) : (
               <div className="w-24 h-24 rounded-2xl flex items-center justify-center text-2xl font-bold"
                 style={{ background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)' }}>

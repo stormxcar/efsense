@@ -160,12 +160,58 @@ export interface CommunityPostRow {
   updated_at: string
 }
 
+export interface CommunityPollOption {
+  id: string
+  label: string
+  sort_order: number
+  votes?: { count: number }[]
+}
+
+export interface CommunityPoll {
+  id: string
+  post_id: string
+  question: string
+  closes_at: string | null
+  options: CommunityPollOption[]
+}
+
+export interface CommunityPostMedia {
+  id: string
+  post_id: string
+  media_type: 'image' | 'video'
+  media_url: string
+  media_public_id: string | null
+  thumbnail_url: string | null
+  alt: string | null
+  sort_order: number
+  created_at?: string
+}
+
+export type CommunityReactionType = 'like' | 'love' | 'haha' | 'wow' | 'sad' | 'angry'
+
+export interface CommunityReactionSummary {
+  reaction: CommunityReactionType
+  count: number
+}
+
+export interface CommunityCommentReactionSummary extends CommunityReactionSummary {
+  comment_id: string
+}
+
+export interface CommunityTag {
+  id: string
+  name: string
+  slug: string
+}
+
 export interface CommunityCommentRow {
   id: string
   post_id: string
   user_id: string
   parent_comment_id: string | null
   content: string
+  display_name_mode: 'account' | 'anonymous' | 'alias'
+  display_name: string | null
   status: 'visible' | 'hidden' | 'deleted'
   created_at: string
   updated_at: string
@@ -296,10 +342,45 @@ export interface Database {
         Insert: Partial<CommunityPostRow>
         Update: Partial<CommunityPostRow>
       }
+      community_tags: {
+        Row: CommunityTag & { created_by: string | null; created_at: string }
+        Insert: Partial<CommunityTag & { created_by: string | null; created_at: string }>
+        Update: Partial<CommunityTag & { created_by: string | null; created_at: string }>
+      }
+      community_post_tags: {
+        Row: { post_id: string; tag_id: string; created_at: string }
+        Insert: { post_id: string; tag_id: string }
+        Update: Partial<{ post_id: string; tag_id: string }>
+      }
+      community_post_media: {
+        Row: CommunityPostMedia
+        Insert: Partial<CommunityPostMedia>
+        Update: Partial<CommunityPostMedia>
+      }
+      community_post_polls: {
+        Row: CommunityPoll
+        Insert: Partial<CommunityPoll>
+        Update: Partial<CommunityPoll>
+      }
+      community_post_poll_options: {
+        Row: CommunityPollOption & { poll_id: string }
+        Insert: Partial<CommunityPollOption & { poll_id: string }>
+        Update: Partial<CommunityPollOption & { poll_id: string }>
+      }
+      community_post_poll_votes: {
+        Row: { poll_id: string; option_id: string; user_id: string; created_at: string }
+        Insert: { poll_id: string; option_id: string; user_id: string }
+        Update: Partial<{ poll_id: string; option_id: string; user_id: string }>
+      }
       community_post_likes: {
-        Row: { post_id: string; user_id: string; created_at: string }
-        Insert: { post_id: string; user_id: string }
-        Update: Partial<{ post_id: string; user_id: string }>
+        Row: { post_id: string; user_id: string; reaction: CommunityReactionType; created_at: string }
+        Insert: { post_id: string; user_id: string; reaction?: CommunityReactionType }
+        Update: Partial<{ post_id: string; user_id: string; reaction: CommunityReactionType }>
+      }
+      community_comment_reactions: {
+        Row: { comment_id: string; user_id: string; reaction: CommunityReactionType; created_at: string }
+        Insert: { comment_id: string; user_id: string; reaction?: CommunityReactionType }
+        Update: Partial<{ comment_id: string; user_id: string; reaction: CommunityReactionType }>
       }
       community_post_bookmarks: {
         Row: { post_id: string; user_id: string; created_at: string }
@@ -322,7 +403,18 @@ export interface Database {
         Update: Partial<HistoryTimelineEventRow>
       }
     }
-    Views: Record<string, never>
+    Views: {
+      community_post_reaction_counts: {
+        Row: { post_id: string; reaction: CommunityReactionType; count: number }
+        Insert: never
+        Update: never
+      }
+      community_comment_reaction_counts: {
+        Row: { comment_id: string; reaction: CommunityReactionType; count: number }
+        Insert: never
+        Update: never
+      }
+    }
     Functions: {
       is_admin: { Args: Record<string, never>; Returns: boolean }
       record_post_view: { Args: { p_post_id: string; p_visitor_key: string }; Returns: number }
@@ -363,14 +455,19 @@ export interface CommunityPostWithDetails extends CommunityPostRow {
   likes?: { count: number }[]
   comments?: { count: number }[]
   community_post_likes?: { user_id: string }[]
+  reactions?: CommunityReactionSummary[]
   community_post_comments?: { count: number }[]
   likes_count?: number
   comments_count?: number
   is_liked?: boolean
+  poll?: CommunityPoll | null
+  tags?: { tag: CommunityTag | null }[]
+  media?: CommunityPostMedia[]
 }
 
 export interface CommunityCommentWithUser extends CommunityCommentRow {
   user?: Pick<UserRow, 'id' | 'username' | 'avatar'> | null
+  replies?: CommunityCommentWithUser[]
 }
 
 export interface HistoryTimelineEventWithPost extends HistoryTimelineEventRow {

@@ -10,21 +10,13 @@ interface AuthState {
   reset: () => void
 }
 
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set) => ({
-      user: null,
-      isLoading: true,
-      setUser: (user) => set({ user }),
-      setLoading: (isLoading) => set({ isLoading }),
-      reset: () => set({ user: null, isLoading: false }),
-    }),
-    {
-      name: 'auth-storage',
-      partialize: (state) => ({ user: state.user }),
-    }
-  )
-)
+export const useAuthStore = create<AuthState>((set) => ({
+  user: null,
+  isLoading: true,
+  setUser: (user) => set({ user }),
+  setLoading: (isLoading) => set({ isLoading }),
+  reset: () => set({ user: null, isLoading: false }),
+}))
 
 // ---- Theme Store ----
 type Theme = 'dark' | 'light'

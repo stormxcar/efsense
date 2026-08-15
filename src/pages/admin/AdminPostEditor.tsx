@@ -80,6 +80,7 @@ export default function AdminPostEditor() {
   const [coverPreview, setCoverPreview] = useState('')
   const [schedulePreset, setSchedulePreset] = useState('')
   const [showInsertedImagePreview, setShowInsertedImagePreview] = useState(true)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const uploadArticleImage = useCallback(async () => {
     const input = document.createElement('input')
@@ -188,8 +189,24 @@ export default function AdminPostEditor() {
     queryFn: fetchTaxonomies,
   })
 
+  const validatePostField = (field: string, value: string) => {
+    if (field === 'title' && value.trim() && value.trim().length < 8) return 'Tiêu đề cần ít nhất 8 ký tự.'
+    if (field === 'slug' && value.trim() && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value.trim().toLowerCase())) return 'Slug chỉ gồm chữ thường, số và dấu gạch ngang.'
+    if (field === 'excerpt' && value.length > 320) return 'Mô tả ngắn không được vượt quá 320 ký tự.'
+    if (field === 'meta_title' && value.length > 70) return 'Tiêu đề SEO không được vượt quá 70 ký tự.'
+    if (field === 'meta_desc' && value.length > 160) return 'Mô tả SEO không được vượt quá 160 ký tự.'
+    return ''
+  }
+
+  const updatePostField = (field: string, value: string) => {
+    setForm(current => ({ ...current, [field]: value }))
+    setFieldErrors(current => ({ ...current, [field]: validatePostField(field, value) }))
+  }
+
   const handleTitleChange = (title: string) => {
-    setForm(f => ({ ...f, title, ...(!isEditing ? { slug: generateSlug(title) } : {}) }))
+    const nextSlug = !isEditing ? generateSlug(title) : form.slug
+    setForm(f => ({ ...f, title, ...(!isEditing ? { slug: nextSlug } : {}) }))
+    setFieldErrors(current => ({ ...current, title: validatePostField('title', title), ...(!isEditing ? { slug: validatePostField('slug', nextSlug) } : {}) }))
   }
 
   // Upload cover via file
@@ -268,6 +285,10 @@ export default function AdminPostEditor() {
         if (new Date(form.scheduled_at).getTime() <= Date.now()) throw new Error('Thời gian xuất bản phải ở tương lai')
       }
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Dữ liệu bài viết chưa hợp lệ'
+      if (message.includes('Tiêu đề')) setFieldErrors(current => ({ ...current, title: message }))
+      if (message.includes('Slug')) setFieldErrors(current => ({ ...current, slug: message }))
+      if (message.includes('Mô tả ngắn')) setFieldErrors(current => ({ ...current, excerpt: message }))
       toast.error(error instanceof Error ? error.message : 'Dữ liệu bài viết chưa hợp lệ')
       return
     }
@@ -324,21 +345,24 @@ export default function AdminPostEditor() {
           <div>
             <label className="block text-sm font-medium mb-2">Tiêu đề *</label>
             <input value={form.title} onChange={e => handleTitleChange(e.target.value)}
-              className="input text-lg font-semibold" placeholder="Nhập tiêu đề bài viết..." />
+              className={`input text-lg font-semibold ${fieldErrors.title ? 'auth-input-error' : ''}`} aria-invalid={Boolean(fieldErrors.title)} placeholder="Nhập tiêu đề bài viết..." />
+            {fieldErrors.title && <p className="auth-field-error">{fieldErrors.title}</p>}
           </div>
 
           {/* Slug */}
           <div>
             <label className="block text-sm font-medium mb-2">Slug</label>
-            <input value={form.slug} onChange={e => setForm(f => ({ ...f, slug: e.target.value }))}
-              className="input font-mono text-sm" placeholder="article-slug" />
+            <input value={form.slug} onChange={e => updatePostField('slug', e.target.value)}
+              className={`input font-mono text-sm ${fieldErrors.slug ? 'auth-input-error' : ''}`} aria-invalid={Boolean(fieldErrors.slug)} placeholder="article-slug" />
+            {fieldErrors.slug && <p className="auth-field-error">{fieldErrors.slug}</p>}
           </div>
 
           {/* Excerpt */}
           <div>
             <label className="block text-sm font-medium mb-2">Tóm tắt</label>
-            <textarea value={form.excerpt} onChange={e => setForm(f => ({ ...f, excerpt: e.target.value }))}
-              className="input resize-none" rows={2} placeholder="Tóm tắt ngắn nội dung bài viết..." maxLength={300} />
+            <textarea value={form.excerpt} onChange={e => updatePostField('excerpt', e.target.value)}
+              className={`input resize-none ${fieldErrors.excerpt ? 'auth-input-error' : ''}`} aria-invalid={Boolean(fieldErrors.excerpt)} rows={2} placeholder="Tóm tắt ngắn nội dung bài viết..." maxLength={320} />
+            {fieldErrors.excerpt && <p className="auth-field-error">{fieldErrors.excerpt}</p>}
           </div>
 
           {/* Rich Text Editor */}
@@ -373,13 +397,15 @@ export default function AdminPostEditor() {
             <h3 className="font-semibold text-sm">Thiết lập SEO</h3>
             <div>
               <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Tiêu đề SEO</label>
-              <input value={form.meta_title} onChange={e => setForm(f => ({ ...f, meta_title: e.target.value }))}
-                className="input text-sm" placeholder="Tiêu đề hiển thị trên công cụ tìm kiếm..." />
+              <input value={form.meta_title} onChange={e => updatePostField('meta_title', e.target.value)}
+                className={`input text-sm ${fieldErrors.meta_title ? 'auth-input-error' : ''}`} aria-invalid={Boolean(fieldErrors.meta_title)} placeholder="Tiêu đề hiển thị trên công cụ tìm kiếm..." />
+              {fieldErrors.meta_title && <p className="auth-field-error">{fieldErrors.meta_title}</p>}
             </div>
             <div>
               <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Mô tả SEO</label>
-              <textarea value={form.meta_desc} onChange={e => setForm(f => ({ ...f, meta_desc: e.target.value }))}
-                className="input resize-none text-sm" rows={2} placeholder="Mô tả hiển thị trên công cụ tìm kiếm..." maxLength={160} />
+              <textarea value={form.meta_desc} onChange={e => updatePostField('meta_desc', e.target.value)}
+                className={`input resize-none text-sm ${fieldErrors.meta_desc ? 'auth-input-error' : ''}`} aria-invalid={Boolean(fieldErrors.meta_desc)} rows={2} placeholder="Mô tả hiển thị trên công cụ tìm kiếm..." maxLength={160} />
+              {fieldErrors.meta_desc && <p className="auth-field-error">{fieldErrors.meta_desc}</p>}
             </div>
           </div>
           {id && <GalleryEditor postId={id} />}

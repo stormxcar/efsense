@@ -51,7 +51,7 @@ export default function MediaPage() {
             {posts.map((post, index) => (
               <Reveal key={post.id} delay={(index % 3) * 70}>
                 <Link to={`/posts/${post.slug}`} className="media-tile">
-                  <img src={post.cover_image ?? ''} alt={post.title} loading="lazy" decoding="async" />
+                  <img src={post.cover_image || undefined} alt={post.title} loading="lazy" decoding="async" />
                   <div>
                     <span>{index + 1 < 10 ? `0${index + 1}` : index + 1}</span>
                     <h3>{post.title}</h3>

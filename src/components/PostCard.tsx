@@ -94,7 +94,7 @@ export default function PostCard({ post, variant = 'default' }: Props) {
 
   if (variant === 'featured') {
     return (
-      <Link to={`/posts/${post.slug}`} {...intentProps} onPointerMove={moveSpotlight} onPointerLeave={resetSpotlight} className="card spotlight-card group overflow-hidden relative grid md:grid-cols-[1.25fr_.75fr] min-h-80">
+      <Link to={`/posts/${post.slug}`} {...intentProps} onPointerMove={moveSpotlight} onPointerLeave={resetSpotlight} className="card spotlight-card post-card-featured group overflow-hidden relative grid md:grid-cols-[1.25fr_.75fr] min-h-80">
         <div className="overflow-hidden relative">
           {post.cover_image ? (
             <img
@@ -112,7 +112,7 @@ export default function PostCard({ post, variant = 'default' }: Props) {
             </div>
           )}
         </div>
-        <div className="p-6 md:p-8 flex flex-col">
+        <div className="post-card-featured-copy p-6 md:p-8 flex flex-col">
           <span className="text-xs font-extrabold uppercase tracking-[.14em] mb-5" style={{ color: 'var(--accent)' }}>Bài viết nổi bật</span>
           {post.series && (
             <span className={cn('badge text-xs self-start mb-3', badgeClass)}>
@@ -120,15 +120,15 @@ export default function PostCard({ post, variant = 'default' }: Props) {
             </span>
           )}
           <div>
-            <h2 className="text-3xl md:text-4xl font-extrabold uppercase leading-[.95] tracking-tight mb-4 group-hover:text-[var(--accent)] transition-colors line-clamp-3" style={{ fontFamily: 'var(--font-family-display)' }}>
+            <h2 className="post-card-featured-title text-3xl md:text-4xl font-extrabold uppercase leading-[.95] tracking-tight mb-4 group-hover:text-[var(--accent)] transition-colors line-clamp-3" style={{ fontFamily: 'var(--font-family-display)' }}>
               {post.title}
             </h2>
             {post.excerpt && (
               <p className="text-sm line-clamp-3 mb-4" style={{ color: 'var(--text-secondary)' }}>{post.excerpt}</p>
             )}
           </div>
-          <div className="flex items-center justify-between mt-auto pt-6">
-            <div className="flex items-center gap-2">
+          <div className="post-card-featured-footer flex items-center justify-between mt-auto pt-6">
+            <div className="post-card-author flex items-center gap-2">
               <Tooltip content={post.author?.username ?? 'Ban biên tập'} placement="top">
                 {post.author?.avatar ? (
                   <img src={post.author.avatar} alt={post.author.username} className="w-7 h-7 rounded-full" />
@@ -138,9 +138,9 @@ export default function PostCard({ post, variant = 'default' }: Props) {
                   </div>
                 )}
               </Tooltip>
-              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{post.author?.username}</span>
+              <span className="post-card-author-name text-xs" style={{ color: 'var(--text-secondary)' }}>{post.author?.username ?? 'Ban biên tập'}</span>
             </div>
-            <div className="flex items-center gap-3 text-xs" style={{ color: 'var(--text-muted)' }}>
+            <div className="post-card-metrics flex items-center gap-3 text-xs" style={{ color: 'var(--text-muted)' }}>
               <Tooltip content={`${formatNumber(post.view_count)} lượt xem`} placement="top">
                 <span className="flex items-center gap-1"><Eye size={12} /> {formatNumber(post.view_count)}</span>
               </Tooltip>
@@ -204,8 +204,8 @@ export default function PostCard({ post, variant = 'default' }: Props) {
           <p className="text-sm line-clamp-2 mb-3 flex-1" style={{ color: 'var(--text-secondary)' }}>{post.excerpt}</p>
         )}
 
-        <div className="flex items-center justify-between mt-auto pt-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-          <div className="flex items-center gap-2">
+        <div className="post-card-footer flex items-center justify-between mt-auto pt-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+          <div className="post-card-author flex items-center gap-2">
             <Tooltip content={post.author?.username ?? 'Ban biên tập'} placement="top">
               {post.author?.avatar ? (
                 <img src={post.author.avatar} alt={post.author.username} className="w-6 h-6 rounded-md shrink-0" />
@@ -215,9 +215,9 @@ export default function PostCard({ post, variant = 'default' }: Props) {
                 </div>
               )}
             </Tooltip>
-            <span className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>{post.author?.username ?? 'Ban biên tập'}</span>
+            <span className="post-card-author-name text-xs truncate" style={{ color: 'var(--text-secondary)' }}>{post.author?.username ?? 'Ban biên tập'}</span>
           </div>
-          <div className="flex items-center gap-2.5 text-xs shrink-0" style={{ color: 'var(--text-muted)' }}>
+          <div className="post-card-metrics flex items-center gap-2.5 text-xs shrink-0" style={{ color: 'var(--text-muted)' }}>
             <Tooltip content={`${formatNumber(post.likes_count ?? 0)} lượt thích`} placement="top">
               <span className="flex items-center gap-1 cursor-default">
                 <Heart size={11} /> {formatNumber(post.likes_count ?? 0)}

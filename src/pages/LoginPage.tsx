@@ -6,6 +6,8 @@ import { useAuth } from '@/hooks/useAuth'
 import toast from 'react-hot-toast'
 import BackButton from '@/components/BackButton'
 import { useProcessing } from '@/hooks/useProcessing'
+import { getRememberMe } from '@/lib/supabase'
+import { validateEmail } from '@/utils/validation'
 
 export default function LoginPage() {
   const { user } = useAuth()
@@ -13,7 +15,9 @@ export default function LoginPage() {
   const process = useProcessing()
   const [form, setForm] = useState({ email: '', password: '' })
   const [showPassword, setShowPassword] = useState(false)
+  const [rememberMe, setRememberMe] = useState(() => getRememberMe())
   const [loading, setLoading] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState({ email: '', password: '' })
 
   useEffect(() => {
     if (user) navigate('/')
@@ -21,9 +25,13 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    const emailError = !form.email.trim() ? 'Vui lòng nhập email' : (() => { try { validateEmail(form.email); return '' } catch (error) { return error instanceof Error ? error.message : 'Email không hợp lệ' } })()
+    const passwordError = !form.password ? 'Vui lòng nhập mật khẩu' : form.password.length < 8 ? 'Mật khẩu cần ít nhất 8 ký tự' : ''
+    setFieldErrors({ email: emailError, password: passwordError })
+    if (emailError || passwordError) return
     setLoading(true)
     try {
-      const { error } = await process('Đang xác thực tài khoản...', () => signIn(form.email, form.password))
+      const { error } = await process('Đang xác thực tài khoản...', () => signIn(form.email, form.password, rememberMe))
       if (error) {
         toast.error(error.message || 'Đăng nhập thất bại')
       } else {
@@ -59,12 +67,20 @@ export default function LoginPage() {
                 <input
                   type="email"
                   value={form.email}
-                  onChange={e => setForm({ ...form, email: e.target.value })}
+                  onChange={e => {
+                    const value = e.target.value
+                    setForm(current => ({ ...current, email: value }))
+                    let message = ''
+                    if (value.trim()) { try { validateEmail(value) } catch (error) { message = error instanceof Error ? error.message : 'Email không hợp lệ' } }
+                    setFieldErrors(current => ({ ...current, email: message }))
+                  }}
                   placeholder="you@example.com"
-                  className="input pl-9"
+                  className={`input pl-9 ${fieldErrors.email ? 'auth-input-error' : ''}`}
+                  aria-invalid={Boolean(fieldErrors.email)}
                   required
                 />
               </div>
+              {fieldErrors.email && <p className="auth-field-error">{fieldErrors.email}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium mb-2">Mật khẩu</label>
@@ -73,9 +89,14 @@ export default function LoginPage() {
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={form.password}
-                  onChange={e => setForm({ ...form, password: e.target.value })}
+                  onChange={e => {
+                    const value = e.target.value
+                    setForm(current => ({ ...current, password: value }))
+                    setFieldErrors(current => ({ ...current, password: value && value.length < 8 ? 'Mật khẩu cần ít nhất 8 ký tự' : '' }))
+                  }}
                   placeholder="••••••••"
-                  className="input pl-9 pr-10"
+                  className={`input pl-9 pr-10 ${fieldErrors.password ? 'auth-input-error' : ''}`}
+                  aria-invalid={Boolean(fieldErrors.password)}
                   required
                 />
                 <button
@@ -87,9 +108,14 @@ export default function LoginPage() {
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
+              {fieldErrors.password && <p className="auth-field-error">{fieldErrors.password}</p>}
             </div>
 
-            <div className="flex justify-end">
+            <div className="flex items-center justify-between gap-3">
+              <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                <input type="checkbox" checked={rememberMe} onChange={event => setRememberMe(event.target.checked)} />
+                Ghi nhớ đăng nhập
+              </label>
               <Link to="/forgot-password" className="text-sm hover:underline" style={{ color: 'var(--text-muted)' }}>
                 Quên mật khẩu?
               </Link>

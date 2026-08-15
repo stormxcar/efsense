@@ -315,8 +315,7 @@ export default function Header() {
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <Link to="/login" className="btn-ghost text-sm px-3 py-2 hidden sm:inline-flex">Đăng nhập</Link>
-                <Link to="/register" className="btn-primary text-sm px-4 py-2 hidden lg:inline-flex">Đăng ký</Link>
+                <Link to="/login" className="btn-primary text-sm px-4 py-2">Đăng nhập</Link>
               </div>
             )}
 
@@ -352,8 +351,7 @@ export default function Header() {
             </div>
             {!user && (
               <div className="mt-2 pt-2 border-t flex flex-col gap-1" style={{ borderColor: 'var(--border-color)' }}>
-                <Link to="/login" className="nav-link" onClick={() => setSidebarOpen(false)}>Đăng nhập</Link>
-                <Link to="/register" className="nav-link" onClick={() => setSidebarOpen(false)}>Đăng ký</Link>
+                <Link to="/login" className="btn-primary justify-center" onClick={() => setSidebarOpen(false)}>Đăng nhập</Link>
               </div>
             )}
           </nav>

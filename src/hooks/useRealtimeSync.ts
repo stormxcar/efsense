@@ -81,8 +81,31 @@ export function useRealtimeSync() {
         if (payload.eventType === 'INSERT') toast('Có bình luận mới trong cộng đồng eFootball.', { id: `community-comment-${(payload.new as { id?: string }).id}` })
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'community_post_likes' }, payload => {
-        refresh(['community-like', 'community-posts'])
-        if (payload.eventType === 'INSERT') toast('Tương tác cộng đồng vừa được cập nhật.', { id: 'realtime-community-like', className: 'realtime-toast' })
+        refresh(['community-like', 'community-reaction', 'community-posts'])
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') toast('Cảm xúc cộng đồng vừa được cập nhật.', { id: 'realtime-community-reaction', className: 'realtime-toast' })
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'community_comment_reactions' }, payload => {
+        refresh(['community-comment-reactions', 'community-comments'])
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') toast('Cảm xúc bình luận vừa được cập nhật.', { id: 'realtime-community-comment-reaction', className: 'realtime-toast' })
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'community_post_bookmarks' }, () => {
+        refresh(['community-bookmark', 'community-posts'])
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'community_post_poll_options' }, () => {
+        refresh(['community-posts'])
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'community_post_poll_votes' }, () => {
+        refresh(['community-posts', 'community-poll-vote', 'community-poll-votes'])
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'community_tags' }, () => {
+        refresh(['community-tags', 'community-posts'])
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'community_post_tags' }, () => {
+        refresh(['community-tags', 'community-posts'])
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'community_post_media' }, payload => {
+        refresh(['community-posts', 'community-media'])
+        if (payload.eventType === 'INSERT') toast('Media cộng đồng vừa được cập nhật.', { id: `community-media-${(payload.new as { id?: string }).id}`, className: 'realtime-toast' })
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'community_user_relations' }, () => {
         refresh(['community-relation', 'community-posts', 'recommended-posts'])

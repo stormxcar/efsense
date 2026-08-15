@@ -31,6 +31,8 @@ Deno.serve(async (request) => {
     const { email, password } = await request.json()
     if (typeof email !== 'string' || typeof password !== 'string') return json({ error: 'Email hoặc mật khẩu không hợp lệ' }, 400)
     const normalizedEmail = email.trim().toLowerCase()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(normalizedEmail)) return json({ error: 'Email cần có dạng ten@mien.com' }, 400)
+    if (!password) return json({ error: 'Vui lòng nhập mật khẩu' }, 400)
 
     const { data: block } = await admin.from('ip_blocks')
       .select('blocked_until')

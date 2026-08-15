@@ -37,7 +37,7 @@ export default function HomePage() {
   })
   const { data: popularPosts = [] } = useQuery({
     queryKey: ['posts', 'popular'],
-    queryFn: () => fetchPosts({ limit: 5 }).then(r => ((r.data ?? []) as unknown as PostWithDetails[]).sort((a, b) => b.view_count - a.view_count)),
+    queryFn: () => fetchPosts({ limit: 5, sort: 'popular' }).then(r => (r.data ?? []) as unknown as PostWithDetails[]),
   })
   const { data: recommended = [], isLoading: loadingRecommended } = useQuery({
     queryKey: ['recommended-posts', user?.id],
@@ -254,7 +254,7 @@ export default function HomePage() {
             <div className="home-media-images">
               {(latestPosts as unknown as PostWithDetails[]).slice(0, 3).map((post, index) => (
                 <Link key={post.id} to={`/posts/${post.slug}`} className={`home-media-image home-media-image-${index + 1}`}>
-                  <img src={post.cover_image ?? ''} alt={post.title} loading="lazy" decoding="async" />
+                  <img src={post.cover_image || undefined} alt={post.title} loading="lazy" decoding="async" />
                   <span>{post.title}</span>
                 </Link>
               ))}

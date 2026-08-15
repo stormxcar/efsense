@@ -4,17 +4,22 @@ import { supabase } from '@/lib/supabase'
 import { Mail, ArrowLeft, CheckCircle, AlertCircle } from 'lucide-react'
 import BackButton from '@/components/BackButton'
 import { useProcessing } from '@/hooks/useProcessing'
+import { validateEmail } from '@/utils/validation'
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
   const [error, setError] = useState('')
+  const [fieldError, setFieldError] = useState('')
   const process = useProcessing()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!email.trim()) return
+    let validationError = ''
+    try { validateEmail(email) } catch (validation) { validationError = validation instanceof Error ? validation.message : 'Email không hợp lệ' }
+    setFieldError(validationError)
+    if (validationError) return
 
     setLoading(true)
     setError('')
@@ -96,18 +101,26 @@ export default function ForgotPasswordPage() {
                   <input
                     type="email"
                     value={email}
-                    onChange={e => setEmail(e.target.value)}
+                    onChange={e => {
+                      const value = e.target.value
+                      setEmail(value)
+                      let message = ''
+                      if (value) { try { validateEmail(value) } catch (validation) { message = validation instanceof Error ? validation.message : 'Email không hợp lệ' } }
+                      setFieldError(message)
+                    }}
                     placeholder="you@example.com"
                     required
-                    className="input pl-10"
+                    className={`input pl-10 ${fieldError ? 'auth-input-error' : ''}`}
+                    aria-invalid={Boolean(fieldError)}
                     autoFocus
                   />
                 </div>
+                {fieldError && <p className="auth-field-error">{fieldError}</p>}
               </div>
 
               <button
                 type="submit"
-                disabled={loading || !email.trim()}
+                disabled={loading || !email.trim() || Boolean(fieldError)}
                 className="btn-primary w-full justify-center disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading

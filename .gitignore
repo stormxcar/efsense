@@ -17,6 +17,7 @@ supabase/.temp/
 *.local
 .env
 .env.*
+supabase/migrations/
 
 # Editor directories and files
 .vscode/*
