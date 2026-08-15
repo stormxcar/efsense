@@ -20,6 +20,9 @@ async function registerMediaAsset(result: CloudinaryUploadResponse, folder: Clou
     resource_type: resourceType,
     folder,
     owner_id: user?.id ?? null,
+    status: 'pending',
+    pending_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    referenced_at: null,
     metadata: { width: result.width, height: result.height, format: result.format, bytes: result.bytes, duration: result.duration ?? null },
     last_seen_at: new Date().toISOString(),
   }, { onConflict: 'public_id' })

@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { createPost, updatePost, fetchSeries, fetchTags, fetchTaxonomies, createTag, generateSlug } from '@/services/api'
+import { createPost, updatePost, fetchSeries, fetchTags, fetchTaxonomies, createTag, generateSlug, markMediaAssetsReferenced } from '@/services/api'
 import { useAuth } from '@/hooks/useAuth'
 import { Save, Eye, ArrowLeft, UploadCloud, X, Plus, Link as LinkIcon, Image, ChevronDown, ChevronUp } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -81,6 +81,7 @@ export default function AdminPostEditor() {
   const [schedulePreset, setSchedulePreset] = useState('')
   const [showInsertedImagePreview, setShowInsertedImagePreview] = useState(true)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const uploadedAssetIdsRef = useRef<Set<string>>(new Set())
 
   const uploadArticleImage = useCallback(async () => {
     const input = document.createElement('input')
@@ -92,6 +93,7 @@ export default function AdminPostEditor() {
       const loadingToast = toast.loading('Đang tải ảnh nội dung lên Cloudinary...')
       try {
         const result = await process('Đang tải ảnh nội dung lên Cloudinary...', () => uploadImageToCloudinary(file, 'football-stories/articles'))
+        uploadedAssetIdsRef.current.add(result.public_id)
         const editor = editorRef.current?.getEditor()
         if (!editor) return
         const range = editor.getSelection(true) ?? { index: Math.max(0, editor.getLength() - 1), length: 0 }
@@ -128,6 +130,7 @@ export default function AdminPostEditor() {
     event.preventDefault()
     void process('Đang tải ảnh đã dán lên Cloudinary...', async () => {
       const result = await uploadImageToCloudinary(file, 'football-stories/articles')
+      uploadedAssetIdsRef.current.add(result.public_id)
       const editor = editorRef.current?.getEditor()
       if (!editor) return
       const range = editor.getSelection(true) ?? { index: Math.max(0, editor.getLength() - 1), length: 0 }
@@ -218,6 +221,7 @@ export default function AdminPostEditor() {
     setUploadingCover(true)
     try {
       const result = await process('Đang tải ảnh bìa lên Cloudinary...', () => uploadImageToCloudinary(file, 'football-stories/covers'))
+      uploadedAssetIdsRef.current.add(result.public_id)
       setForm(f => ({ ...f, cover_image: result.secure_url }))
       URL.revokeObjectURL(localUrl)
       setCoverPreview('')
@@ -238,6 +242,7 @@ export default function AdminPostEditor() {
     setUploadingCover(true)
     try {
       const result = await process('Đang sao chép ảnh URL vào Cloudinary...', () => uploadImageToCloudinary(coverUrlInput, 'football-stories/covers'))
+      uploadedAssetIdsRef.current.add(result.public_id)
       setForm(f => ({ ...f, cover_image: result.secure_url }))
       setCoverPreview('')
       setCoverUrlInput(result.secure_url)
@@ -307,8 +312,13 @@ export default function AdminPostEditor() {
         ? await updatePost(id!, payload)
         : await createPost(payload)
       if (result.error) throw result.error
+      const savedPostId = result.data?.id || id
+      if (savedPostId && uploadedAssetIdsRef.current.size) {
+        await markMediaAssetsReferenced([...uploadedAssetIdsRef.current], 'post', savedPostId)
+        uploadedAssetIdsRef.current.clear()
+      }
       if (status === 'published') {
-        const postId = result.data?.id || id
+        const postId = savedPostId
         if (postId) void supabase.functions.invoke('newsletter-dispatch', { body: { postId } })
       }
       // Invalidate all related queries so lists refresh immediately

@@ -15,6 +15,7 @@ import {
   createCommunityPost,
   deleteCommunityPost,
   fetchCommunityComments,
+  fetchCommunityCommentCount,
   fetchCommunityCommentReactionData,
   fetchCommunityReactionState,
   fetchCommunityBookmarkState,
@@ -27,14 +28,19 @@ import {
   submitContentReport,
   setCommunityReaction,
   setCommunityCommentReaction,
+  getCommunityDeviceFingerprint,
+  markMediaAssetsReferenced,
+  runCommunityGuard,
   toggleCommunityBookmark,
   toggleCommunityUserRelation,
+  uploadCommentImage,
   uploadCommunityMedia,
   updateCommunityPost,
   voteCommunityPoll,
 } from '@/services/api'
 import { validateImageFile, validateVideoDuration, validateVideoFile } from '@/lib/cloudinary'
 import type { CommunityCommentWithUser, CommunityPostMedia, CommunityPostWithDetails, CommunityReactionSummary, CommunityReactionType } from '@/types/database'
+import type { CommentCursor } from '@/services/api'
 import { formatRelativeDate, getInitials } from '@/utils'
 
 type FeedType = 'all' | 'discussion' | 'reel' | 'showcase'
@@ -124,6 +130,10 @@ function CommunityComposer({ onCreated }: { onCreated: () => void }) {
   const [pollOptions, setPollOptions] = useState(['', ''])
   const [tags, setTags] = useState<string[]>([])
   const [tagInput, setTagInput] = useState('')
+  const [humanCheckRequired, setHumanCheckRequired] = useState(false)
+  const [humanCheck, setHumanCheck] = useState(false)
+  const [honeypot, setHoneypot] = useState('')
+  const startedAt = useRef(Date.now())
 
   useEffect(() => () => {
     mediaPreviews.filter(preview => preview.startsWith('blob:')).forEach(preview => URL.revokeObjectURL(preview))
@@ -195,6 +205,14 @@ function CommunityComposer({ onCreated }: { onCreated: () => void }) {
     if (!title.trim() && !content.trim() && !mediaFiles.length && !mediaUrls.length && !pollEnabled) return toast.error('Hãy thêm nội dung, media hoặc bình chọn trước khi đăng.')
 
     await process('Đang xuất bản bài đăng cộng đồng...', async () => {
+      const guard = await runCommunityGuard({ action: 'post', fingerprint: getCommunityDeviceFingerprint(), startedAt: startedAt.current, honeypot, humanCheck })
+      if (!guard.ok) {
+        if (guard.requiresHuman) {
+          setHumanCheckRequired(true)
+          throw new Error('Vui lòng xác nhận bạn là người dùng thật rồi gửi lại.')
+        }
+        throw guard.error ?? new Error('Bạn đang thao tác quá nhanh. Vui lòng thử lại sau.')
+      }
       const uploadedMedia: Array<{ media_type: 'image' | 'video'; media_url: string; media_public_id: string | null; thumbnail_url: string | null; alt: string | null; sort_order: number }> = []
       for (const [index, file] of mediaFiles.entries()) {
         const isVideo = file.type.startsWith('video/')
@@ -209,7 +227,7 @@ function CommunityComposer({ onCreated }: { onCreated: () => void }) {
       }
       const primary = uploadedMedia[0]
 
-      const { error } = await createCommunityPost({
+      const result = await createCommunityPost({
         author_id: user.id,
         post_type: postType,
         title,
@@ -224,7 +242,9 @@ function CommunityComposer({ onCreated }: { onCreated: () => void }) {
         tags: normalizedTags,
         poll: pollEnabled ? { question: pollQuestion.trim(), options: normalizedPollOptions } : null,
       })
-      if (error) throw error
+      if (result.error) throw result.error
+      const publicIds = uploadedMedia.map(item => item.media_public_id).filter((value): value is string => Boolean(value))
+      if (publicIds.length && result.data?.id) await markMediaAssetsReferenced(publicIds, 'community_post', result.data.id)
       setTitle('')
       setContent('')
       setTactic('')
@@ -236,6 +256,10 @@ function CommunityComposer({ onCreated }: { onCreated: () => void }) {
       setPollOptions(['', ''])
       setTags([])
       setTagInput('')
+      setHumanCheckRequired(false)
+      setHumanCheck(false)
+      setHoneypot('')
+      startedAt.current = Date.now()
       toast.success('Bài đăng đã gửi vào hàng đợi kiểm duyệt')
       onCreated()
     }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : 'Không thể đăng bài lúc này'))
@@ -263,6 +287,7 @@ function CommunityComposer({ onCreated }: { onCreated: () => void }) {
         <input className="input" value={gameVersion} onChange={event => setGameVersion(event.target.value)} placeholder="Phiên bản game" maxLength={80} />
       </div>
       <textarea className="input community-composer-textarea" value={content} onChange={event => setContent(event.target.value)} placeholder={postType === 'showcase' ? 'Mô tả cách vận hành đội hình (không bắt buộc)...' : postType === 'reel' ? 'Mô tả ngắn cho Reels (không bắt buộc)...' : 'Chia sẻ nội dung hoặc câu hỏi (không bắt buộc)...'} maxLength={5000} rows={4} />
+      <input className="community-comment-honeypot" value={honeypot} onChange={event => setHoneypot(event.target.value)} tabIndex={-1} autoComplete="off" aria-hidden="true" />
       {postType === 'showcase' && <input className="input" value={tactic} onChange={event => setTactic(event.target.value)} placeholder="Từ khóa chiến thuật, ví dụ: 4-2-3-1, phản công nhanh" maxLength={120} />}
       <div className="community-tag-editor">
         <div className="community-tag-editor-row"><input className="input" value={tagInput} onChange={event => setTagInput(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ',') { event.preventDefault(); addDraftTags() } }} onBlur={addDraftTags} placeholder="Thêm tag, ngăn cách bằng dấu phẩy (không bắt buộc)" maxLength={240} /><button type="button" className="btn-ghost p-2" onClick={addDraftTags} aria-label="Thêm tag"><Plus size={15} /></button></div>
@@ -286,6 +311,7 @@ function CommunityComposer({ onCreated }: { onCreated: () => void }) {
       </div>
       {mediaPreviews.length > 0 && <div className="community-upload-preview"><div className="community-upload-preview-label">Xem trước media · {mediaPreviews.length} mục</div><div className="community-upload-preview-grid">{mediaPreviews.map((preview, index) => <div key={`${preview}-${index}`} className="community-upload-preview-item">{mediaFiles[index]?.type.startsWith('video/') || looksLikeVideoSource(preview) ? <video src={preview || undefined} className="community-upload-preview-media" controls muted playsInline /> : <img src={preview || undefined} alt={`Xem trước media ${index + 1}`} className="community-upload-preview-media" loading="lazy" />}<button type="button" className="community-upload-preview-remove" onClick={() => removeMedia(index)} aria-label={`Xóa media ${index + 1}`}><X size={14} /></button></div>)}</div></div>}
       <p className="community-helper"><ShieldCheck size={14} /> Video Reels tối đa 60 MB và 60 giây. Cloudinary tự tạo thumbnail khi video được lưu.</p>
+      {humanCheckRequired && <label className="mt-2 flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}><input type="checkbox" checked={humanCheck} onChange={event => setHumanCheck(event.target.checked)} /> Tôi xác nhận mình là người dùng thật.</label>}
     </form>
   )
 }
@@ -299,30 +325,37 @@ function getCommunityCommentIdentity(comment: CommunityCommentWithUser) {
   return { name: comment.user?.username ?? 'Thành viên', mode: 'account' as const }
 }
 
-function nestCommunityComments(comments: CommunityCommentWithUser[]) {
-  const nodes = comments.map(comment => ({ ...comment, replies: [] as CommunityCommentWithUser[] }))
-  const byId = new Map(nodes.map(comment => [comment.id, comment]))
-  const roots: CommunityCommentWithUser[] = []
-  for (const comment of nodes) {
-    const parent = comment.parent_comment_id ? byId.get(comment.parent_comment_id) : null
-    if (parent) parent.replies?.push(comment)
-    else roots.push(comment)
-  }
-  return roots
-}
-
 function CommunityComments({ postId, poll }: { postId: string; poll?: NonNullable<CommunityPostWithDetails['poll']> | null }) {
   const { user } = useAuth()
   const process = useProcessing()
   const queryClient = useQueryClient()
   const [content, setContent] = useState('')
+  const [commentImage, setCommentImage] = useState<File | null>(null)
+  const [commentImagePreview, setCommentImagePreview] = useState<string | null>(null)
   const [displayNameMode, setDisplayNameMode] = useState<CommunityCommentDisplayMode>('account')
   const [displayName, setDisplayName] = useState('')
   const [replyTo, setReplyTo] = useState<{ id: string; name: string } | null>(null)
+  const [humanCheckRequired, setHumanCheckRequired] = useState(false)
+  const [humanCheck, setHumanCheck] = useState(false)
+  const [honeypot, setHoneypot] = useState('')
+  const startedAt = useRef(Date.now())
   const inputRef = useRef<HTMLInputElement>(null)
-  const { data, isLoading } = useQuery({ queryKey: ['community-comments', postId], queryFn: () => fetchCommunityComments(postId) })
+  const commentImageInputRef = useRef<HTMLInputElement>(null)
+  const commentsQuery = useInfiniteQuery({
+    queryKey: ['community-comments', postId],
+    initialPageParam: null as CommentCursor | null,
+    queryFn: async ({ pageParam }) => {
+      const result = await fetchCommunityComments(postId, pageParam)
+      if (result.error) throw result.error
+      return result
+    },
+    getNextPageParam: lastPage => lastPage.nextCursor ?? undefined,
+    retry: 1,
+  })
+  const { data: commentCount } = useQuery({ queryKey: ['community-comment-count', postId], queryFn: () => fetchCommunityCommentCount(postId) })
   const { data: pollVotes } = useQuery({ queryKey: ['community-poll-votes', postId], queryFn: () => fetchCommunityPollVotes(postId), enabled: Boolean(poll) })
-  const commentIds = data?.data?.map(comment => comment.id) ?? []
+  const comments = commentsQuery.data?.pages.flatMap(page => page.data) ?? []
+  const commentIds = comments.map(comment => comment.id)
   const { data: commentReactionData } = useQuery({
     queryKey: ['community-comment-reactions', postId, user?.id, commentIds.join(',')],
     queryFn: async () => {
@@ -349,9 +382,35 @@ function CommunityComments({ postId, poll }: { postId: string; poll?: NonNullabl
       await queryClient.invalidateQueries({ queryKey: ['community-comment-reactions', postId] })
     },
   })
-  const comments = nestCommunityComments(data?.data ?? [])
   const optionLabels = new Map((poll?.options ?? []).map(option => [option.id, option.label]))
   const voteByUserId = new Map((pollVotes?.data ?? []).map(vote => [vote.user_id, optionLabels.get(vote.option_id)]))
+  const isLoading = commentsQuery.isLoading
+  const isError = commentsQuery.isError
+  const error = commentsQuery.error
+
+  useEffect(() => () => {
+    if (commentImagePreview?.startsWith('blob:')) URL.revokeObjectURL(commentImagePreview)
+  }, [commentImagePreview])
+
+  const handleCommentImage = (file: File | undefined) => {
+    if (!file) return
+    try {
+      validateImageFile(file)
+      if (file.size > 4 * 1024 * 1024) throw new Error('Ảnh bình luận phải nhỏ hơn 4 MB.')
+      if (commentImagePreview?.startsWith('blob:')) URL.revokeObjectURL(commentImagePreview)
+      setCommentImage(file)
+      setCommentImagePreview(URL.createObjectURL(file))
+    } catch (validationError) {
+      toast.error(validationError instanceof Error ? validationError.message : 'Ảnh bình luận không hợp lệ.')
+    }
+  }
+
+  const clearCommentImage = () => {
+    if (commentImagePreview?.startsWith('blob:')) URL.revokeObjectURL(commentImagePreview)
+    setCommentImage(null)
+    setCommentImagePreview(null)
+    if (commentImageInputRef.current) commentImageInputRef.current.value = ''
+  }
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
@@ -360,23 +419,55 @@ function CommunityComments({ postId, poll }: { postId: string; poll?: NonNullabl
     const alias = displayName.trim()
     if (displayNameMode === 'alias' && (alias.length < 2 || alias.length > 32)) return toast.error('Biệt danh phải dài từ 2 đến 32 ký tự.')
     await process('Đang gửi bình luận...', async () => {
-      const { error } = await createCommunityComment({ post_id: postId, user_id: user.id, content, parent_comment_id: replyTo?.id ?? null, display_name_mode: displayNameMode, display_name: displayNameMode === 'alias' ? alias : null })
-      if (error) throw error
+      const guard = await runCommunityGuard({ action: 'comment', fingerprint: getCommunityDeviceFingerprint(), startedAt: startedAt.current, honeypot, humanCheck })
+      if (!guard.ok) {
+        if (guard.requiresHuman) {
+          setHumanCheckRequired(true)
+          throw new Error('Vui lòng xác nhận bạn là người dùng thật rồi gửi lại.')
+        }
+        throw guard.error ?? new Error('Bạn đang thao tác quá nhanh. Vui lòng thử lại sau.')
+      }
+      let imageUrl: string | null = null
+      let imagePublicId: string | null = null
+      if (commentImage) {
+        const uploaded = await uploadCommentImage(commentImage, user.id)
+        imageUrl = uploaded.url
+        imagePublicId = uploaded.publicId
+      }
+      const result = await createCommunityComment({ post_id: postId, user_id: user.id, content, image_url: imageUrl, parent_comment_id: replyTo?.id ?? null, display_name_mode: displayNameMode, display_name: displayNameMode === 'alias' ? alias : null })
+      if (result.error) throw result.error
+      if (imagePublicId && result.data?.id) await markMediaAssetsReferenced([imagePublicId], 'community_comment', result.data.id)
       setContent('')
+      clearCommentImage()
       setReplyTo(null)
+      setHumanCheckRequired(false)
+      setHumanCheck(false)
+      startedAt.current = Date.now()
       await queryClient.invalidateQueries({ queryKey: ['community-comments', postId] })
+      await queryClient.invalidateQueries({ queryKey: ['community-comment-replies', postId] })
+      await queryClient.invalidateQueries({ queryKey: ['community-comment-count', postId] })
     }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : 'Không thể gửi bình luận'))
   }
 
   return (
     <div className="community-comments">
-      {isLoading ? <div className="skeleton h-10" /> : comments.map(comment => <CommunityCommentItem key={comment.id} comment={comment} currentUser={user} voteByUserId={voteByUserId} reactionCountsByComment={commentReactionCounts} reactionByComment={commentReactionByUser} onReact={(commentId, reaction) => { if (!user) return toast.error('Đăng nhập để thả cảm xúc.'); void process('Đang cập nhật cảm xúc bình luận...', () => commentReactionMutation.mutateAsync({ commentId, reaction })).catch((error: unknown) => toast.error(error instanceof Error ? error.message : 'Không thể cập nhật cảm xúc bình luận')) }} onReply={(id, name) => { setReplyTo({ id, name }); inputRef.current?.focus() }} />)}
+      {isLoading ? <div className="skeleton h-10" /> : isError ? (
+        <div className="community-comments-error" role="alert">
+          <span>Không thể tải bình luận cộng đồng{error instanceof Error && error.message ? `: ${error.message}` : '.'}</span>
+          <button type="button" className="btn-secondary text-xs" onClick={() => void commentsQuery.refetch()}>Thử tải lại</button>
+        </div>
+      ) : comments.map(comment => <CommunityCommentItem key={comment.id} postId={postId} comment={comment} currentUser={user} voteByUserId={voteByUserId} reactionCountsByComment={commentReactionCounts} reactionByComment={commentReactionByUser} onReact={(commentId, reaction) => { if (!user) return toast.error('Đăng nhập để thả cảm xúc.'); void process('Đang cập nhật cảm xúc bình luận...', () => commentReactionMutation.mutateAsync({ commentId, reaction })).catch((error: unknown) => toast.error(error instanceof Error ? error.message : 'Không thể cập nhật cảm xúc bình luận')) }} onReply={(id, name) => { setReplyTo({ id, name }); inputRef.current?.focus() }} depth={0} />)}
+      {commentsQuery.hasNextPage && <button type="button" className="btn-secondary mx-auto mt-4" onClick={() => void commentsQuery.fetchNextPage()} disabled={commentsQuery.isFetchingNextPage}>{commentsQuery.isFetchingNextPage ? 'Đang tải...' : 'Tải thêm bình luận'}</button>}
+      {humanCheckRequired && user && <label className="mt-3 flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}><input type="checkbox" checked={humanCheck} onChange={event => setHumanCheck(event.target.checked)} /> Tôi xác nhận mình là người dùng thật.</label>}
+      {comments.length > 0 && commentCount?.count != null && <p className="mt-3 text-xs" style={{ color: 'var(--text-muted)' }}>Đang hiển thị {comments.length} trong tổng số {commentCount.count} bình luận</p>}
       {user ? (
         <form className="community-comment-form" onSubmit={handleSubmit}>
           <Avatar username={displayNameMode === 'anonymous' ? 'Ẩn danh' : displayNameMode === 'alias' && displayName.trim() ? displayName.trim() : user.username} avatar={displayNameMode === 'account' ? user.avatar : null} />
           <div className="community-comment-form-fields">
             {replyTo && <div className="community-comment-replying"><Reply size={13} /> Đang trả lời <strong>{replyTo.name}</strong><button type="button" className="btn-ghost p-1" onClick={() => setReplyTo(null)} aria-label="Hủy trả lời"><X size={13} /></button></div>}
+            <input className="community-comment-honeypot" value={honeypot} onChange={event => setHoneypot(event.target.value)} tabIndex={-1} autoComplete="off" aria-hidden="true" />
             <input ref={inputRef} className="input" value={content} onChange={event => setContent(event.target.value)} placeholder={replyTo ? `Trả lời ${replyTo.name}...` : 'Viết bình luận...'} maxLength={1000} />
+            {commentImagePreview && <div className="community-comment-image-preview"><img src={commentImagePreview || undefined} alt="Xem trước ảnh bình luận" /><button type="button" className="community-upload-preview-remove" onClick={clearCommentImage} aria-label="Xóa ảnh bình luận"><X size={14} /></button></div>}
             <div className="community-comment-identity-picker">
               <label htmlFor={`comment-identity-${postId}`}>Hiển thị với</label>
               <select id={`comment-identity-${postId}`} className="input" value={displayNameMode} onChange={event => setDisplayNameMode(event.target.value as CommunityCommentDisplayMode)}>
@@ -387,6 +478,11 @@ function CommunityComments({ postId, poll }: { postId: string; poll?: NonNullabl
               {displayNameMode === 'alias' && <input className="input" value={displayName} onChange={event => setDisplayName(event.target.value)} placeholder="Nhập biệt danh (2 đến 32 ký tự)" maxLength={32} />}
             </div>
             <small className="community-comment-identity-help">Tên tài khoản vẫn được lưu để kiểm duyệt, nhưng chỉ cách hiển thị bạn chọn mới xuất hiện công khai.</small>
+            <div className="community-comment-attachment-row">
+              <button type="button" className="btn-ghost text-xs" onClick={() => commentImageInputRef.current?.click()}><ImagePlus size={14} /> Thêm ảnh</button>
+              <input ref={commentImageInputRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={event => { handleCommentImage(event.target.files?.[0]); event.currentTarget.value = '' }} />
+              <small>JPG, PNG hoặc WebP · tối đa 4 MB</small>
+            </div>
           </div>
           <button className="btn-ghost p-2 community-comment-submit" type="submit" aria-label="Gửi bình luận"><Send size={16} /></button>
         </form>
@@ -395,7 +491,7 @@ function CommunityComments({ postId, poll }: { postId: string; poll?: NonNullabl
   )
 }
 
-function CommunityCommentItem({ comment, currentUser, voteByUserId, reactionCountsByComment, reactionByComment, onReact, onReply, depth = 0 }: { comment: CommunityCommentWithUser; currentUser: ReturnType<typeof useAuth>['user']; voteByUserId: Map<string, string | undefined>; reactionCountsByComment: Map<string, CommunityReactionSummary[]>; reactionByComment: Map<string, CommunityReactionType>; onReact: (commentId: string, reaction: CommunityReactionType | null) => void; onReply: (id: string, name: string) => void; depth?: number }) {
+function CommunityCommentItem({ postId, comment, currentUser, voteByUserId, reactionCountsByComment, reactionByComment, onReact, onReply, depth = 0 }: { postId: string; comment: CommunityCommentWithUser; currentUser: ReturnType<typeof useAuth>['user']; voteByUserId: Map<string, string | undefined>; reactionCountsByComment: Map<string, CommunityReactionSummary[]>; reactionByComment: Map<string, CommunityReactionType>; onReact: (commentId: string, reaction: CommunityReactionType | null) => void; onReply: (id: string, name: string) => void; depth?: number }) {
   const identity = getCommunityCommentIdentity(comment)
   const voteLabel = voteByUserId.get(comment.user_id)
   return <div className={`community-comment ${depth > 0 ? 'is-reply' : ''}`}>
@@ -404,10 +500,49 @@ function CommunityCommentItem({ comment, currentUser, voteByUserId, reactionCoun
       <div className="community-comment-author"><strong>{identity.name}</strong>{identity.mode !== 'account' && <small className="community-comment-identity-label">{identity.mode === 'anonymous' ? 'Ẩn danh' : 'Biệt danh'}</small>}</div>
       {voteLabel && <small className="community-comment-vote"><Vote size={12} /> Đã chọn: {voteLabel}</small>}
       <p>{comment.content}</p>
-      <div className="community-comment-meta"><CommunityReactionPicker currentReaction={reactionByComment.get(comment.id) ?? null} counts={reactionCountsByComment.get(comment.id) ?? []} onSelect={reaction => onReact(comment.id, reaction)} /><small>{formatRelativeDate(comment.created_at)}</small>{currentUser && <button type="button" className="btn-ghost p-1" onClick={() => onReply(comment.id, identity.name)}><Reply size={12} /> Trả lời</button>}</div>
-      {comment.replies && comment.replies.length > 0 && <div className="community-comment-replies">{comment.replies.map(reply => <CommunityCommentItem key={reply.id} comment={reply} currentUser={currentUser} voteByUserId={voteByUserId} reactionCountsByComment={reactionCountsByComment} reactionByComment={reactionByComment} onReact={onReact} onReply={onReply} depth={depth + 1} />)}</div>}
+      {comment.image_url && <img src={comment.image_url || undefined} alt="Ảnh đính kèm bình luận" className="community-comment-image" loading="lazy" />}
+      <div className="community-comment-meta"><CommunityReactionPicker currentReaction={reactionByComment.get(comment.id) ?? null} counts={reactionCountsByComment.get(comment.id) ?? []} onSelect={reaction => onReact(comment.id, reaction)} /><small>{formatRelativeDate(comment.created_at)}</small>{currentUser && depth < 4 && <button type="button" className="btn-ghost p-1" onClick={() => onReply(comment.id, identity.name)}><Reply size={12} /> Trả lời</button>}</div>
+      {depth < 4 && <CommunityCommentReplies postId={postId} parentId={comment.id} currentUser={currentUser} voteByUserId={voteByUserId} onReact={onReact} onReply={onReply} depth={depth} />}
     </div>
   </div>
+}
+
+function CommunityCommentReplies({ postId, parentId, currentUser, voteByUserId, onReact, onReply, depth }: { postId: string; parentId: string; currentUser: ReturnType<typeof useAuth>['user']; voteByUserId: Map<string, string | undefined>; onReact: (commentId: string, reaction: CommunityReactionType | null) => void; onReply: (id: string, name: string) => void; depth: number }) {
+  const { user } = useAuth()
+  const [expanded, setExpanded] = useState(false)
+  const repliesQuery = useInfiniteQuery({
+    queryKey: ['community-comment-replies', postId, parentId],
+    initialPageParam: null as CommentCursor | null,
+    enabled: expanded,
+    queryFn: async ({ pageParam }) => {
+      const result = await fetchCommunityComments(postId, pageParam, 10, parentId)
+      if (result.error) throw result.error
+      return result
+    },
+    getNextPageParam: lastPage => lastPage.nextCursor ?? undefined,
+  })
+  const replies = repliesQuery.data?.pages.flatMap(page => page.data) ?? []
+  const replyIds = replies.map(reply => reply.id)
+  const { data: reactionData } = useQuery({
+    queryKey: ['community-comment-reactions', postId, parentId, user?.id, replyIds.join(',')],
+    queryFn: async () => {
+      const result = await fetchCommunityCommentReactionData(replyIds, user?.id)
+      if (result.error) throw result.error
+      return result
+    },
+    enabled: expanded && replyIds.length > 0,
+  })
+  const reactionCounts = new Map<string, CommunityReactionSummary[]>()
+  for (const item of reactionData?.counts ?? []) {
+    const current = reactionCounts.get(item.comment_id) ?? []
+    current.push({ reaction: item.reaction, count: Number(item.count) })
+    reactionCounts.set(item.comment_id, current)
+  }
+  const reactionByUser = new Map((reactionData?.mine ?? []).map(item => [item.comment_id, item.reaction]))
+
+  if (!expanded) return <button type="button" className="btn-ghost text-xs px-1 py-1" onClick={() => setExpanded(true)}>Xem phản hồi</button>
+  if (repliesQuery.isError) return <div className="mt-2 text-xs" style={{ color: '#f59e0b' }}>Không thể tải phản hồi. <button type="button" className="btn-ghost text-xs px-1" onClick={() => void repliesQuery.refetch()}>Thử lại</button></div>
+  return <div className="community-comment-replies"><div>{repliesQuery.isLoading && <div className="skeleton h-10 rounded-lg" />}{!repliesQuery.isLoading && replies.length === 0 && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Chưa có phản hồi.</p>}{replies.map(reply => <CommunityCommentItem key={reply.id} postId={postId} comment={reply} currentUser={currentUser} voteByUserId={voteByUserId} reactionCountsByComment={reactionCounts} reactionByComment={reactionByUser} onReact={onReact} onReply={onReply} depth={depth + 1} />)}</div>{repliesQuery.hasNextPage && <button type="button" className="btn-ghost text-xs" onClick={() => void repliesQuery.fetchNextPage()} disabled={repliesQuery.isFetchingNextPage}>{repliesQuery.isFetchingNextPage ? 'Đang tải...' : 'Tải thêm phản hồi'}</button>}</div>
 }
 
 function CommunityPollCard({ postId, poll, userId }: { postId: string; poll: NonNullable<CommunityPostWithDetails['poll']>; userId?: string }) {
@@ -521,6 +656,7 @@ function CommunityPostEditForm({ post, onCancel, onSaved }: { post: CommunityPos
       } : {}
       const { error } = await updateCommunityPost(post.id, user.id, { title, content, game_version: gameVersion, tactic, tags: nextTags, ...mediaUpdates })
       if (error) throw error
+      if (uploaded?.publicId) await markMediaAssetsReferenced([uploaded.publicId], 'community_post', post.id)
       toast.success('Đã cập nhật bài đăng')
       onSaved()
     }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : 'Không thể cập nhật bài đăng'))
@@ -763,6 +899,8 @@ function CommunityPostCard({ post, onTagSelect }: { post: CommunityPostWithDetai
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
+  const [reportHumanCheckRequired, setReportHumanCheckRequired] = useState(false)
+  const [reportHumanCheck, setReportHumanCheck] = useState(false)
   const [editing, setEditing] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [reportReason, setReportReason] = useState('spam')
@@ -817,12 +955,20 @@ function CommunityPostCard({ post, onTagSelect }: { post: CommunityPostWithDetai
   const reportMutation = useMutation({
     mutationFn: () => {
       if (!user) throw new Error('Bạn cần đăng nhập để báo cáo nội dung.')
-      return submitContentReport({ reporter_id: user.id, target_type: post.post_type === 'reel' ? 'reel' : 'community_post', target_id: post.id, reason: reportReason })
+      return runCommunityGuard({ action: 'report', fingerprint: getCommunityDeviceFingerprint(), humanCheck: reportHumanCheck }).then(guard => {
+        if (!guard.ok) {
+          if (guard.requiresHuman) setReportHumanCheckRequired(true)
+          throw guard.error ?? new Error('Bạn đang thao tác quá thường xuyên. Vui lòng thử lại sau.')
+        }
+        return submitContentReport({ reporter_id: user.id, target_type: post.post_type === 'reel' ? 'reel' : 'community_post', target_id: post.id, reason: reportReason })
+      })
     },
     onSuccess: async ({ error }) => {
       if (error) throw error
       setReportOpen(false)
       setMenuOpen(false)
+      setReportHumanCheckRequired(false)
+      setReportHumanCheck(false)
       toast.success('Đã gửi báo cáo cho đội ngũ kiểm duyệt')
     },
   })
@@ -879,7 +1025,7 @@ function CommunityPostCard({ post, onTagSelect }: { post: CommunityPostWithDetai
             <button type="button" onClick={() => void handleRelation('follow')}><UserPlus size={14} /> {relationState?.isFollowing ? 'Bỏ theo dõi' : 'Theo dõi tác giả'}</button>
             <button type="button" onClick={() => void handleRelation('mute')}><VolumeX size={14} /> {relationState?.isMuted ? 'Bật lại bài đăng' : 'Tắt tiếng tác giả'}</button>
             <button type="button" onClick={() => void handleRelation('block')}><Ban size={14} /> {relationState?.isBlocked ? 'Bỏ chặn tác giả' : 'Chặn tác giả'}</button>
-            <button type="button" onClick={() => { setMenuOpen(false); setReportOpen(true) }}><Flag size={14} /> Báo cáo nội dung</button>
+            <button type="button" onClick={() => { setMenuOpen(false); setReportHumanCheckRequired(false); setReportHumanCheck(false); setReportOpen(true) }}><Flag size={14} /> Báo cáo nội dung</button>
           </>}
         </div>}</div>}
       </div>
@@ -899,7 +1045,7 @@ function CommunityPostCard({ post, onTagSelect }: { post: CommunityPostWithDetai
           </div>
           <CommunityReactionSummary counts={reactionCounts} />
         </div>
-        {reportOpen && <form className="community-report-form" onSubmit={event => { event.preventDefault(); void process('Đang gửi báo cáo...', () => reportMutation.mutateAsync()) }}><div className="flex items-center justify-between"><strong>Báo cáo nội dung</strong><button type="button" className="btn-ghost p-1" onClick={() => setReportOpen(false)} aria-label="Đóng báo cáo"><X size={15} /></button></div><select className="input text-sm" value={reportReason} onChange={event => setReportReason(event.target.value)}><option value="spam">Nội dung rác</option><option value="offensive_content">Nội dung phản cảm</option><option value="harassment">Quấy rối</option><option value="fake_information">Thông tin sai lệch</option><option value="other">Lý do khác</option></select><button type="submit" className="btn-secondary text-sm"><Flag size={14} /> Gửi báo cáo</button></form>}
+        {reportOpen && <form className="community-report-form" onSubmit={event => { event.preventDefault(); void process('Đang gửi báo cáo...', () => reportMutation.mutateAsync()) }}><div className="flex items-center justify-between"><strong>Báo cáo nội dung</strong><button type="button" className="btn-ghost p-1" onClick={() => setReportOpen(false)} aria-label="Đóng báo cáo"><X size={15} /></button></div><select className="input text-sm" value={reportReason} onChange={event => setReportReason(event.target.value)}><option value="spam">Nội dung rác</option><option value="offensive_content">Nội dung phản cảm</option><option value="harassment">Quấy rối</option><option value="fake_information">Thông tin sai lệch</option><option value="other">Lý do khác</option></select>{reportHumanCheckRequired && <label className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}><input type="checkbox" checked={reportHumanCheck} onChange={event => setReportHumanCheck(event.target.checked)} /> Tôi xác nhận mình là người dùng thật.</label>}<button type="submit" className="btn-secondary text-sm"><Flag size={14} /> Gửi báo cáo</button></form>}
         {commentsOpen && <CommunityComments postId={post.id} poll={post.poll} />}
       </>}
       <ConfirmModal open={deleteOpen} title="Xóa bài viết?" message="Bài viết và toàn bộ media, bình chọn, bình luận liên quan sẽ bị xóa khỏi cộng đồng. Thao tác này không thể hoàn tác." confirmLabel="Xóa bài viết" loading={deleteMutation.isPending} onCancel={() => setDeleteOpen(false)} onConfirm={() => { void process('Đang xóa bài viết...', () => deleteMutation.mutateAsync()) }} />

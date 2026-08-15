@@ -1,14 +1,20 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Send, ImageIcon, X, Reply, Trash2, EyeOff, AlertCircle } from 'lucide-react'
 import {
   fetchComments,
+  fetchCommentReplies,
+  fetchCommentCount,
   createComment,
   deleteComment,
   hideComment,
+  getCommunityDeviceFingerprint,
+  markMediaAssetsReferenced,
+  runCommunityGuard,
   uploadCommentImage,
 } from '@/services/api'
+import type { CommentCursor } from '@/services/api'
 import { formatRelativeDate, getInitials } from '@/utils'
 import type { CommentWithUser } from '@/types/database'
 import toast from 'react-hot-toast'
@@ -27,15 +33,36 @@ export default function CommentSection({ postId, currentUser }: Props) {
   const [image, setImage] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [humanCheckRequired, setHumanCheckRequired] = useState(false)
+  const [humanCheck, setHumanCheck] = useState(false)
+  const [honeypot, setHoneypot] = useState('')
+  const startedAt = useRef(Date.now())
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const process = useProcessing()
 
-  const { data: comments = [], isLoading } = useQuery({
+  const commentsQuery = useInfiniteQuery({
     queryKey: ['comments', postId],
-    queryFn: () => fetchComments(postId).then(r => r.data ?? []),
+    initialPageParam: null as CommentCursor | null,
+    queryFn: async ({ pageParam }) => {
+      const result = await fetchComments(postId, pageParam)
+      if (result.error) throw result.error
+      return result
+    },
+    getNextPageParam: lastPage => lastPage.nextCursor ?? undefined,
+    retry: 1,
   })
+  const { data: commentCount } = useQuery({ queryKey: ['comment-count', postId], queryFn: () => fetchCommentCount(postId) })
+  const comments = commentsQuery.data?.pages.flatMap(page => page.data) ?? []
+  const isLoading = commentsQuery.isLoading
+  const isError = commentsQuery.isError
+  const error = commentsQuery.error
+  const refetch = commentsQuery.refetch
+
+  useEffect(() => () => {
+    if (imagePreview?.startsWith('blob:')) URL.revokeObjectURL(imagePreview)
+  }, [imagePreview])
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -45,6 +72,7 @@ export default function CommentSection({ postId, currentUser }: Props) {
       toast.error('Chỉ hỗ trợ ảnh JPG, PNG và WebP')
       return
     }
+    if (imagePreview?.startsWith('blob:')) URL.revokeObjectURL(imagePreview)
     setImage(file)
     setImagePreview(URL.createObjectURL(file))
   }
@@ -55,22 +83,44 @@ export default function CommentSection({ postId, currentUser }: Props) {
     setSubmitting(true)
     try {
       const { error } = await process('Đang đăng bình luận...', async () => {
+        const guard = await runCommunityGuard({ action: 'comment', fingerprint: getCommunityDeviceFingerprint(), startedAt: startedAt.current, honeypot, humanCheck })
+        if (!guard.ok) {
+          if (guard.requiresHuman) {
+            setHumanCheckRequired(true)
+            throw new Error('Vui lòng xác nhận bạn là người dùng thật rồi gửi lại.')
+          }
+          throw guard.error ?? new Error('Bạn đang thao tác quá nhanh. Vui lòng thử lại sau.')
+        }
         let image_url: string | null = null
-        if (image) image_url = await uploadCommentImage(image, currentUser.id)
-        return createComment({
+        let imagePublicId: string | null = null
+        if (image) {
+          const uploaded = await uploadCommentImage(image, currentUser.id)
+          image_url = uploaded.url
+          imagePublicId = uploaded.publicId
+        }
+        const result = await createComment({
           post_id: postId,
           user_id: currentUser.id,
           content: content.trim(),
           parent_comment_id: replyTo?.id ?? null,
           image_url,
         })
+        if (result.error) throw result.error
+        if (imagePublicId && result.data?.id) await markMediaAssetsReferenced([imagePublicId], 'comment', result.data.id)
+        return result
       })
       if (error) throw error
       setContent('')
+      if (imagePreview?.startsWith('blob:')) URL.revokeObjectURL(imagePreview)
       setImage(null)
       setImagePreview(null)
       setReplyTo(null)
-      qc.invalidateQueries({ queryKey: ['comments', postId] })
+      setHumanCheckRequired(false)
+      setHumanCheck(false)
+      startedAt.current = Date.now()
+      await qc.invalidateQueries({ queryKey: ['comments', postId] })
+      await qc.invalidateQueries({ queryKey: ['comment-replies'] })
+      await qc.invalidateQueries({ queryKey: ['comment-count', postId] })
       toast.success('Đã đăng bình luận')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Không thể đăng bình luận')
@@ -80,18 +130,24 @@ export default function CommentSection({ postId, currentUser }: Props) {
   }
 
   const handleDelete = async (id: string) => {
-    await deleteComment(id)
-    qc.invalidateQueries({ queryKey: ['comments', postId] })
+    const { error } = await deleteComment(id)
+    if (error) throw error
+    await qc.invalidateQueries({ queryKey: ['comments', postId] })
+    await qc.invalidateQueries({ queryKey: ['comment-replies'] })
+    await qc.invalidateQueries({ queryKey: ['comment-count', postId] })
     toast.success('Đã xóa bình luận')
   }
 
   const handleHide = async (id: string) => {
-    await hideComment(id)
-    qc.invalidateQueries({ queryKey: ['comments', postId] })
+    const { error } = await hideComment(id)
+    if (error) throw error
+    await qc.invalidateQueries({ queryKey: ['comments', postId] })
+    await qc.invalidateQueries({ queryKey: ['comment-replies'] })
+    await qc.invalidateQueries({ queryKey: ['comment-count', postId] })
     toast.success('Đã ẩn bình luận')
   }
 
-  const totalComments = comments.reduce((acc: number, c: CommentWithUser) => acc + 1 + (c.replies?.length ?? 0), 0)
+  const totalComments = commentCount?.count ?? comments.length
 
   return (
     <section className="mt-12">
@@ -122,6 +178,7 @@ export default function CommentSection({ postId, currentUser }: Props) {
               </div>
             )}
             <div className="flex-1 space-y-3">
+              <input className="comment-honeypot" value={honeypot} onChange={e => setHoneypot(e.target.value)} tabIndex={-1} autoComplete="off" aria-hidden="true" />
               <textarea
                 ref={textareaRef}
                 value={content}
@@ -185,6 +242,14 @@ export default function CommentSection({ postId, currentUser }: Props) {
             </div>
           ))}
         </div>
+      ) : isError ? (
+        <div className="card p-5 text-center" role="alert">
+          <AlertCircle size={24} className="mx-auto mb-2" style={{ color: '#f59e0b' }} />
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+            Không thể tải bình luận lúc này{error instanceof Error && error.message ? `: ${error.message}` : '.'}
+          </p>
+          <button type="button" className="btn-secondary text-sm mt-3" onClick={() => void refetch()}>Thử tải lại</button>
+        </div>
       ) : comments.length === 0 ? (
         <div className="text-center py-12" style={{ color: 'var(--text-muted)' }}>
           <p className="text-4xl mb-3">💬</p>
@@ -202,30 +267,36 @@ export default function CommentSection({ postId, currentUser }: Props) {
                 textareaRef.current?.focus()
               }}
               onDelete={id => setConfirmDeleteId(id)}
-              onHide={handleHide}
+                onHide={handleHide}
+              postId={postId}
+              depth={0}
             />
           ))}
+          {commentsQuery.hasNextPage && <button type="button" className="btn-secondary mx-auto mt-5" onClick={() => void commentsQuery.fetchNextPage()} disabled={commentsQuery.isFetchingNextPage}>{commentsQuery.isFetchingNextPage ? 'Đang tải...' : 'Tải thêm bình luận'}</button>}
         </div>
       )}
+      {humanCheckRequired && currentUser && <label className="mt-3 flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}><input type="checkbox" checked={humanCheck} onChange={event => setHumanCheck(event.target.checked)} /> Tôi xác nhận mình là người dùng thật.</label>}
+      {comments.length > 0 && commentCount?.count != null && <p className="mt-3 text-xs" style={{ color: 'var(--text-muted)' }}>Đang hiển thị {comments.length} trong tổng số {commentCount.count} bình luận</p>}
       <ConfirmModal open={Boolean(confirmDeleteId)} title="Xóa bình luận?" message="Bình luận sẽ bị xóa khỏi cuộc thảo luận và không thể khôi phục." confirmLabel="Xóa bình luận" onCancel={() => setConfirmDeleteId(null)} onConfirm={() => { if (confirmDeleteId) void handleDelete(confirmDeleteId).finally(() => setConfirmDeleteId(null)) }} />
     </section>
   )
 }
 
 function CommentItem({
-  comment, currentUser, onReply, onDelete, onHide, isReply = false
+  comment, currentUser, onReply, onDelete, onHide, postId, depth = 0
 }: {
   comment: CommentWithUser
   currentUser: { id: string; role: string } | null
   onReply: (id: string, username: string) => void
   onDelete: (id: string) => void
   onHide: (id: string) => void
-  isReply?: boolean
+  postId: string
+  depth?: number
 }) {
   const isOwn = currentUser?.id === comment.user_id
   const isAdmin = currentUser?.role === 'admin'
   return (
-    <div className={`flex gap-3 ${isReply ? 'ml-12 mt-4' : ''}`}>
+    <div className={`flex gap-3 ${depth > 0 ? 'ml-12 mt-4' : ''}`}>
       {comment.user?.avatar ? (
         <img src={comment.user.avatar} alt={comment.user.username} className="w-9 h-9 rounded-lg shrink-0 object-cover" />
       ) : (
@@ -246,7 +317,7 @@ function CommentItem({
           )}
         </div>
         <div className="flex items-center gap-3 mt-2">
-          {!isReply && currentUser && (
+          {depth < 4 && currentUser && (
             <button
               onClick={() => onReply(comment.id, comment.user?.username ?? '')}
               className="btn-ghost text-xs px-2 py-1 flex items-center gap-1"
@@ -266,23 +337,43 @@ function CommentItem({
           )}
         </div>
 
-        {/* Replies */}
-        {comment.replies && comment.replies.length > 0 && (
-          <div className="mt-4 space-y-4 pl-4 border-l-2" style={{ borderColor: 'rgba(59,130,246,0.2)' }}>
-            {comment.replies.map(reply => (
-              <CommentItem
-                key={reply.id}
-                comment={reply}
-                currentUser={currentUser}
-                onReply={onReply}
-                onDelete={onDelete}
-                onHide={onHide}
-                isReply
-              />
-            ))}
-          </div>
-        )}
+        {depth < 4 && <CommentReplies parentId={comment.id} postId={postId} currentUser={currentUser} onReply={onReply} onDelete={onDelete} onHide={onHide} depth={depth} />}
       </div>
+    </div>
+  )
+}
+
+function CommentReplies({ parentId, postId, currentUser, onReply, onDelete, onHide, depth }: {
+  parentId: string
+  postId: string
+  currentUser: { id: string; role: string } | null
+  onReply: (id: string, username: string) => void
+  onDelete: (id: string) => void
+  onHide: (id: string) => void
+  depth: number
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const query = useInfiniteQuery({
+    queryKey: ['comment-replies', postId, parentId],
+    initialPageParam: null as CommentCursor | null,
+    enabled: expanded,
+    queryFn: async ({ pageParam }) => {
+      const result = await fetchCommentReplies(parentId, pageParam)
+      if (result.error) throw result.error
+      return result
+    },
+    getNextPageParam: lastPage => lastPage.nextCursor ?? undefined,
+  })
+  const replies = query.data?.pages.flatMap(page => page.data) ?? []
+
+  if (!expanded) return <button type="button" className="btn-ghost text-xs px-1 py-1" onClick={() => setExpanded(true)}>Xem phản hồi</button>
+  if (query.isError) return <div className="mt-2 text-xs" style={{ color: '#f59e0b' }}>Không thể tải phản hồi. <button type="button" className="btn-ghost text-xs px-1" onClick={() => void query.refetch()}>Thử lại</button></div>
+  return (
+    <div className="mt-3 space-y-3 pl-4 border-l-2" style={{ borderColor: 'rgba(59,130,246,0.2)' }}>
+      {query.isLoading && <div className="skeleton h-10 rounded-lg" />}
+      {replies.map(reply => <CommentItem key={reply.id} comment={reply} currentUser={currentUser} onReply={onReply} onDelete={onDelete} onHide={onHide} postId={postId} depth={depth + 1} />)}
+      {!query.isLoading && replies.length === 0 && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Chưa có phản hồi.</p>}
+      {query.hasNextPage && <button type="button" className="btn-ghost text-xs" onClick={() => void query.fetchNextPage()} disabled={query.isFetchingNextPage}>{query.isFetchingNextPage ? 'Đang tải...' : 'Tải thêm phản hồi'}</button>}
     </div>
   )
 }

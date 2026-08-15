@@ -1,7 +1,7 @@
 import { cloudinaryVideoPosterUrl, optimizeCloudinaryDeliveryUrl, uploadImageToCloudinary, uploadVideoToCloudinary } from '@/lib/cloudinary'
 import { setRememberMe, supabase } from '@/lib/supabase'
 import { validateEmail, validatePassword, validateUsername } from '@/utils/validation'
-import type { CommunityCommentReactionSummary, CommunityCommentWithUser, CommunityPostMedia, CommunityPostWithDetails, CommunityReactionSummary, CommunityReactionType, CommunityTag, HistoryTimelineEventWithPost, RecommendedPostRow, UserRow } from '@/types/database'
+import type { CommentWithUser, CommunityCommentReactionSummary, CommunityCommentWithUser, CommunityPostMedia, CommunityPostWithDetails, CommunityReactionSummary, CommunityReactionType, CommunityTag, HistoryTimelineEventWithPost, RecommendedPostRow, UserRow } from '@/types/database'
 
 // ---- AUTH SERVICES ----
 
@@ -177,6 +177,16 @@ export async function cleanupOrphanMediaAssets(ids: string[]) {
   return supabase.rpc('cleanup_orphan_media_assets', { p_ids: ids })
 }
 
+export async function markMediaAssetsReferenced(publicIds: string[], referenceType: string, referenceId: string) {
+  const ids = [...new Set(publicIds.filter(Boolean))]
+  if (!ids.length) return { data: 0, error: null }
+  return supabase.rpc('mark_media_assets_referenced', {
+    p_public_ids: ids,
+    p_reference_type: referenceType,
+    p_reference_id: referenceId,
+  })
+}
+
 export async function fetchPostBySlug(slug: string, incrementView = true) {
   const { data, error } = await supabase
     .from('posts')
@@ -342,24 +352,54 @@ export async function deleteSeries(id: string) {
 
 // ---- COMMENT SERVICES ----
 
-export async function fetchComments(postId: string) {
-  const { data, error } = await supabase
+export type CommentCursor = { created_at: string; id: string }
+export type CommentPage<T> = { data: T[]; nextCursor: CommentCursor | null; hasMore: boolean; error: Error | null }
+
+function applyCommentCursor<T extends { or: (filters: string) => T }>(query: T, cursor?: CommentCursor | null) {
+  if (!cursor) return query
+  const createdAt = new Date(cursor.created_at).toISOString()
+  return query.or(`created_at.gt.${createdAt},and(created_at.eq.${createdAt},id.gt.${cursor.id})`)
+}
+
+function toCommentPage<T extends { id: string; created_at: string }>(rows: T[] | null, error: Error | null, limit: number): CommentPage<T> {
+  const result = rows ?? []
+  const hasMore = result.length > limit
+  const data = hasMore ? result.slice(0, limit) : result
+  const last = data.at(-1)
+  return { data, nextCursor: hasMore && last ? { created_at: last.created_at, id: last.id } : null, hasMore, error }
+}
+
+export async function fetchComments(postId: string, cursor?: CommentCursor | null, limit = 12): Promise<CommentPage<CommentWithUser>> {
+  let query = supabase
     .from('comments')
     .select('*, user:users(id, username, avatar)')
     .eq('post_id', postId)
     .eq('status', 'visible')
+    .is('parent_comment_id', null)
     .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
+    .limit(limit + 1)
+  query = applyCommentCursor(query, cursor)
+  const { data, error } = await query
+  return toCommentPage((data ?? []) as unknown as CommentWithUser[], error, limit)
+}
 
-  if (data) {
-    const roots = data.filter((c) => !c.parent_comment_id)
-    const replies = data.filter((c) => c.parent_comment_id)
-    const nested = roots.map((r) => ({
-      ...r,
-      replies: replies.filter((reply) => reply.parent_comment_id === r.id),
-    }))
-    return { data: nested, error }
-  }
-  return { data: [], error }
+export async function fetchCommentReplies(parentCommentId: string, cursor?: CommentCursor | null, limit = 10): Promise<CommentPage<CommentWithUser>> {
+  let query = supabase
+    .from('comments')
+    .select('*, user:users(id, username, avatar)')
+    .eq('parent_comment_id', parentCommentId)
+    .eq('status', 'visible')
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
+    .limit(limit + 1)
+  query = applyCommentCursor(query, cursor)
+  const { data, error } = await query
+  return toCommentPage((data ?? []) as unknown as CommentWithUser[], error, limit)
+}
+
+export async function fetchCommentCount(postId: string) {
+  return supabase.from('comments').select('id', { count: 'exact', head: true }).eq('post_id', postId).eq('status', 'visible')
 }
 
 export async function createComment(comment: {
@@ -380,10 +420,10 @@ export async function hideComment(id: string) {
   return supabase.from('comments').update({ status: 'hidden' }).eq('id', id)
 }
 
-export async function uploadCommentImage(file: File, userId: string): Promise<string> {
+export async function uploadCommentImage(file: File, userId: string): Promise<{ url: string; publicId: string }> {
   void userId
   const result = await uploadImageToCloudinary(file, 'football-stories/comments')
-  return result.secure_url
+  return { url: result.secure_url, publicId: result.public_id }
 }
 
 // ---- LIKES / BOOKMARKS ----
@@ -758,15 +798,25 @@ export async function voteCommunityPoll(postId: string, optionId: string, userId
   return supabase.from('community_post_poll_votes').upsert({ poll_id: pollResult.data.id, option_id: optionId, user_id: userId })
 }
 
-export async function fetchCommunityComments(postId: string) {
-  const { data, error } = await supabase
+export async function fetchCommunityComments(postId: string, cursor?: CommentCursor | null, limit = 12, parentCommentId?: string | null): Promise<CommentPage<CommunityCommentWithUser>> {
+  let query = supabase
     .from('community_post_comments')
-    .select('*, user:users(id, username, avatar)')
+    // The reaction ledger also references users, so PostgREST needs the
+    // comment's explicit FK to disambiguate this relationship.
+    .select('*, user:users!community_post_comments_user_id_fkey(id, username, avatar)')
     .eq('post_id', postId)
     .eq('status', 'visible')
     .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
+    .limit(limit + 1)
+  query = parentCommentId ? query.eq('parent_comment_id', parentCommentId) : query.is('parent_comment_id', null)
+  query = applyCommentCursor(query, cursor)
+  const { data, error } = await query
+  return toCommentPage((data ?? []) as unknown as CommunityCommentWithUser[], error, limit)
+}
 
-  return { data: (data ?? []) as unknown as CommunityCommentWithUser[], error }
+export async function fetchCommunityCommentCount(postId: string) {
+  return supabase.from('community_post_comments').select('id', { count: 'exact', head: true }).eq('post_id', postId).eq('status', 'visible')
 }
 
 export async function fetchCommunityCommentReactionData(commentIds: string[], userId?: string) {
@@ -803,6 +853,7 @@ export async function createCommunityComment(data: {
   user_id: string
   content: string
   parent_comment_id?: string | null
+  image_url?: string | null
   display_name_mode?: 'account' | 'anonymous' | 'alias'
   display_name?: string | null
 }) {
@@ -815,9 +866,10 @@ export async function createCommunityComment(data: {
     ...data,
     content: data.content.trim(),
     parent_comment_id: data.parent_comment_id ?? null,
+    image_url: data.image_url ?? null,
     display_name_mode: displayNameMode,
     display_name: displayName || null,
-  }).select('*, user:users(id, username, avatar)').single()
+  }).select('*, user:users!community_post_comments_user_id_fkey(id, username, avatar)').single()
 }
 
 export async function toggleCommunityLike(postId: string, userId: string, isLiked: boolean) {
@@ -871,6 +923,48 @@ export async function submitContentReport(data: {
   description?: string
 }) {
   return supabase.from('content_reports').insert(data)
+}
+
+export type CommunityGuardAction = 'comment' | 'report' | 'post'
+
+export function getCommunityDeviceFingerprint() {
+  if (typeof window === 'undefined') return 'server'
+  const key = 'football-stories-device-token'
+  let token = window.localStorage.getItem(key)
+  if (!token) {
+    token = crypto.randomUUID()
+    window.localStorage.setItem(key, token)
+  }
+  return token
+}
+
+export async function runCommunityGuard(input: {
+  action: CommunityGuardAction
+  fingerprint?: string
+  startedAt?: number
+  honeypot?: string
+  humanCheck?: boolean
+}) {
+  const { data, error } = await supabase.functions.invoke('community-guard', {
+    body: { ...input, fingerprint: input.fingerprint ?? getCommunityDeviceFingerprint() },
+  })
+  if (error) {
+    const context = error && typeof error === 'object' && 'context' in error ? (error as { context?: unknown }).context : null
+    if (typeof Response !== 'undefined' && context instanceof Response) {
+      try {
+        const payload = await context.clone().json() as { error?: unknown; requiresHuman?: unknown }
+        if (typeof payload.error === 'string') return { ok: false, requiresHuman: payload.requiresHuman === true, error: new Error(payload.error) }
+      } catch {
+        // Keep the friendly fallback below for non-JSON responses.
+      }
+    }
+    return { ok: false, requiresHuman: false, error: new Error('Không thể kiểm tra chống spam lúc này. Vui lòng thử lại.') }
+  }
+  return {
+    ok: data?.ok !== false,
+    requiresHuman: data?.requiresHuman === true,
+    error: data?.error ? new Error(String(data.error)) : null,
+  }
 }
 
 export async function uploadCommunityMedia(source: File | string, mediaType: 'image' | 'video') {
@@ -994,10 +1088,10 @@ export async function updateContentReport(id: string, status: 'reviewing' | 'res
   return supabase.from('content_reports').update({ status, resolved_at: status === 'resolved' || status === 'dismissed' ? new Date().toISOString() : null }).eq('id', id)
 }
 
-export async function uploadAvatar(file: File, userId: string): Promise<string> {
+export async function uploadAvatar(file: File, userId: string): Promise<{ url: string; publicId: string }> {
   void userId
   const result = await uploadImageToCloudinary(file, 'football-stories/avatars')
-  return result.secure_url
+  return { url: result.secure_url, publicId: result.public_id }
 }
 
 export async function updateProfile(userId: string, updates: { username?: string; bio?: string; avatar?: string }) {

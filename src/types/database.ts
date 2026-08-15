@@ -210,6 +210,7 @@ export interface CommunityCommentRow {
   user_id: string
   parent_comment_id: string | null
   content: string
+  image_url: string | null
   display_name_mode: 'account' | 'anonymous' | 'alias'
   display_name: string | null
   status: 'visible' | 'hidden' | 'deleted'
@@ -231,6 +232,21 @@ export interface HistoryTimelineEventRow {
   status: 'draft' | 'published'
   created_at: string
   updated_at: string
+}
+
+export interface MediaAssetRow {
+  id: string
+  public_id: string
+  secure_url: string
+  resource_type: 'image' | 'video' | 'raw'
+  folder: string | null
+  owner_id: string | null
+  metadata: Json
+  status: 'pending' | 'referenced' | 'orphaned'
+  pending_expires_at: string | null
+  referenced_at: string | null
+  last_seen_at: string
+  created_at: string
 }
 
 // ---- Database type for Supabase client ----
@@ -402,6 +418,16 @@ export interface Database {
         Insert: Partial<HistoryTimelineEventRow>
         Update: Partial<HistoryTimelineEventRow>
       }
+      media_assets: {
+        Row: MediaAssetRow
+        Insert: Partial<MediaAssetRow>
+        Update: Partial<MediaAssetRow>
+      }
+      community_abuse_events: {
+        Row: { id: string; actor_user_id: string | null; action: 'comment' | 'report' | 'post'; ip_hash: string; fingerprint_hash: string | null; passed: boolean; metadata: Json; created_at: string }
+        Insert: Partial<{ id: string; actor_user_id: string | null; action: 'comment' | 'report' | 'post'; ip_hash: string; fingerprint_hash: string | null; passed: boolean; metadata: Json; created_at: string }>
+        Update: never
+      }
     }
     Views: {
       community_post_reaction_counts: {
@@ -426,6 +452,9 @@ export interface Database {
       admin_dashboard_timeseries: { Args: { p_days?: number }; Returns: { day: string; dau: number; reads: number; reels: number; approved: number }[] }
       find_orphan_media_assets: { Args: { p_limit?: number }; Returns: { id: string; public_id: string; secure_url: string; resource_type: string; folder: string | null; owner_id: string | null; created_at: string; last_seen_at: string }[] }
       cleanup_orphan_media_assets: { Args: { p_ids: string[] }; Returns: number }
+      mark_media_assets_referenced: { Args: { p_public_ids: string[]; p_reference_type?: string | null; p_reference_id?: string | null }; Returns: number }
+      sync_pending_media_references: { Args: Record<string, never>; Returns: number }
+      cleanup_expired_pending_media_assets: { Args: { p_limit?: number }; Returns: number }
     }
     Enums: Record<string, never>
   }

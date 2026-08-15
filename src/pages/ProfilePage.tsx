@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
-import { updateProfile, uploadAvatar } from '@/services/api'
+import { markMediaAssetsReferenced, updateProfile, uploadAvatar } from '@/services/api'
 import PostCard from '@/components/PostCard'
 import { Camera, Bookmark, Rss, Edit2, Save, X, Heart } from 'lucide-react'
 import { getInitials, formatDate } from '@/utils'
@@ -81,9 +81,10 @@ export default function ProfilePage() {
     setAvatarPreview(previewUrl)
     try {
       await process('Đang cập nhật ảnh đại diện...', async () => {
-        const url = await uploadAvatar(file, user.id)
-        const { error } = await updateProfile(user.id, { avatar: url })
+        const uploaded = await uploadAvatar(file, user.id)
+        const { error } = await updateProfile(user.id, { avatar: uploaded.url })
         if (error) throw error
+        await markMediaAssetsReferenced([uploaded.publicId], 'user_avatar', user.id)
       })
       qc.invalidateQueries({ queryKey: ['user'] })
       toast.success('Đã cập nhật ảnh đại diện')
