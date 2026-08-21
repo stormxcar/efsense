@@ -4,11 +4,13 @@ import PostCard, { PostCardSkeleton } from '@/components/PostCard'
 import Reveal from '@/components/Reveal'
 import { fetchWeeklyPopularPosts } from '@/services/api'
 import type { PostWithDetails } from '@/types/database'
+import { useAuth } from '@/hooks/useAuth'
 
 export default function WeeklyPopularPage() {
+  const { user } = useAuth()
   const { data: posts = [], isLoading } = useQuery({
-    queryKey: ['posts', 'weekly-popular'],
-    queryFn: () => fetchWeeklyPopularPosts(20).then(result => result.data as PostWithDetails[]),
+    queryKey: ['posts', 'weekly-popular', user?.id],
+    queryFn: () => fetchWeeklyPopularPosts(20, user?.id).then(result => result.data as PostWithDetails[]),
   })
 
   return (

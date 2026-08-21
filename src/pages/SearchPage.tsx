@@ -75,7 +75,7 @@ export default function SearchPage() {
   })
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['search', query, page, leagueId, clubId, playerId, seasonId, sort],
+    queryKey: ['search', query, page, leagueId, clubId, playerId, seasonId, sort, user?.id],
     queryFn: () => fetchPosts({
       page,
       limit: PAGE_SIZE,
@@ -85,6 +85,7 @@ export default function SearchPage() {
       playerId,
       seasonId,
       sort,
+      viewerId: user?.id,
     }),
     placeholderData: previous => previous,
   })

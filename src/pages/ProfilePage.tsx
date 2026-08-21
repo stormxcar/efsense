@@ -1,16 +1,49 @@
 import { useState, useRef } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { markMediaAssetsReferenced, updateProfile, uploadAvatar } from '@/services/api'
-import PostCard from '@/components/PostCard'
-import { Camera, Bookmark, Rss, Edit2, Save, X, Heart } from 'lucide-react'
-import { getInitials, formatDate } from '@/utils'
+import PostCard, { PostCardSkeleton } from '@/components/PostCard'
+import { Camera, Bookmark, Rss, Edit2, Save, X, Heart, Clock3, ArrowRight, Eye, Sparkles, ChevronLeft, ChevronRight, LayoutDashboard, Library, Users, Settings } from 'lucide-react'
+import { getInitials, formatDate, formatRelativeDate } from '@/utils'
+import { getReadingHistory, type ReadingHistoryItem } from '@/utils/history'
+import { cloudinaryResponsiveImageUrl } from '@/lib/cloudinary'
 import toast from 'react-hot-toast'
 import { Link, useNavigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useProcessing } from '@/hooks/useProcessing'
 import type { PostWithDetails, SeriesRow } from '@/types/database'
+import { ProfileCollectionsSection, ProfileFollowingSection, ProfileOverviewSection, ProfileSettingsSection } from '@/components/profile/ProfileHub'
+import { fetchProfileOverview } from '@/services/profile'
+
+const PROFILE_PAGE_SIZE = 9
+
+function normalizeProfilePost(value: unknown, state: { is_liked?: boolean; is_bookmarked?: boolean } = {}) {
+  const post = (Array.isArray(value) ? value[0] : value) as (PostWithDetails | null | undefined)
+  if (!post) return null
+  return {
+    ...post,
+    ...state,
+    likes_count: Number(post.likes?.[0]?.count ?? post.likes_count ?? 0),
+    comments_count: Number(post.comments?.[0]?.count ?? post.comments_count ?? 0),
+  }
+}
+
+function ProfilePagination({ page, total, loading, onChange }: { page: number; total: number; loading: boolean; onChange: (page: number) => void }) {
+  const totalPages = Math.ceil(total / PROFILE_PAGE_SIZE)
+  if (totalPages <= 1) return null
+  return (
+    <nav className="profile-pagination" aria-label="Phân trang nội dung hồ sơ">
+      <button type="button" className="btn-ghost profile-pagination-button" onClick={() => onChange(page - 1)} disabled={loading || page <= 1} aria-label="Trang trước">
+        <ChevronLeft size={15} />
+      </button>
+      <span>Trang {page} / {totalPages}</span>
+      <button type="button" className="btn-ghost profile-pagination-button" onClick={() => onChange(page + 1)} disabled={loading || page >= totalPages} aria-label="Trang sau">
+        <ChevronRight size={15} />
+      </button>
+    </nav>
+  )
+}
 
 export default function ProfilePage() {
   const { user, isLoading } = useAuth()
@@ -22,6 +55,9 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false)
   const [avatarPreview, setAvatarPreview] = useState('')
   const [activeTab, setActiveTab] = useState<'bookmarks' | 'likes' | 'follows'>('bookmarks')
+  const [profileSection, setProfileSection] = useState<'overview' | 'library' | 'following' | 'settings'>('overview')
+  const [collectionPage, setCollectionPage] = useState(1)
+  const [recentReads, setRecentReads] = useState<ReadingHistoryItem[]>(() => getReadingHistory())
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -33,46 +69,106 @@ export default function ProfilePage() {
     if (avatarPreview.startsWith('blob:')) URL.revokeObjectURL(avatarPreview)
   }, [avatarPreview])
 
-  const { data: bookmarks = [] } = useQuery({
-    queryKey: ['bookmarks', user?.id],
+  useEffect(() => {
+    const syncRecentReads = () => setRecentReads(getReadingHistory())
+    window.addEventListener('football-stories:reading-history-changed', syncRecentReads)
+    return () => window.removeEventListener('football-stories:reading-history-changed', syncRecentReads)
+  }, [])
+
+  const { data: bookmarksResult, isLoading: bookmarksLoading, isFetching: bookmarksFetching } = useQuery({
+    queryKey: ['bookmarks', user?.id, collectionPage],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('bookmarks')
-        .select('post:posts(*, author:users!posts_author_id_fkey(username, avatar), series:series(name, slug))')
+        .select('post:posts(*, author:users!posts_author_id_fkey(username, avatar), series:series(name, slug), likes(count), comments(count))')
         .eq('user_id', user!.id)
         .order('created_at', { ascending: false })
+        .range((collectionPage - 1) * PROFILE_PAGE_SIZE, collectionPage * PROFILE_PAGE_SIZE - 1)
       if (error) throw error
-      return data?.map(b => b.post) ?? []
+      const { count, error: countError } = await supabase.from('bookmarks').select('*', { count: 'exact', head: true }).eq('user_id', user!.id)
+      if (countError) throw countError
+      return { items: data?.map(b => normalizeProfilePost(b.post, { is_bookmarked: true })).filter(Boolean) ?? [], total: count ?? 0 }
     },
     enabled: !!user,
+    placeholderData: keepPreviousData,
   })
 
-  const { data: followed = [] } = useQuery({
-    queryKey: ['follows', user?.id],
+  const { data: followedResult, isLoading: followedLoading, isFetching: followedFetching } = useQuery({
+    queryKey: ['follows', user?.id, collectionPage],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('follows')
         .select('series:series(*)')
         .eq('user_id', user!.id)
+        .order('created_at', { ascending: false })
+        .range((collectionPage - 1) * PROFILE_PAGE_SIZE, collectionPage * PROFILE_PAGE_SIZE - 1)
       if (error) throw error
-      return data?.map(f => f.series) ?? []
+      const { count, error: countError } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('user_id', user!.id)
+      if (countError) throw countError
+      return { items: data?.map(f => f.series) ?? [], total: count ?? 0 }
+    },
+    enabled: !!user,
+    placeholderData: keepPreviousData,
+  })
+
+  const { data: likedPostsResult, isLoading: likedPostsLoading, isFetching: likedPostsFetching } = useQuery({
+    queryKey: ['liked-posts', user?.id, collectionPage],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('likes')
+        .select('post:posts(*, author:users!posts_author_id_fkey(username, avatar), series:series(name, slug), likes(count), comments(count))')
+        .eq('user_id', user!.id)
+        .order('created_at', { ascending: false })
+        .range((collectionPage - 1) * PROFILE_PAGE_SIZE, collectionPage * PROFILE_PAGE_SIZE - 1)
+      if (error) throw error
+      const { count, error: countError } = await supabase.from('likes').select('*', { count: 'exact', head: true }).eq('user_id', user!.id)
+      if (countError) throw countError
+      return { items: data?.map(item => normalizeProfilePost(item.post, { is_liked: true })).filter(Boolean) ?? [], total: count ?? 0 }
+    },
+    enabled: !!user,
+    placeholderData: keepPreviousData,
+  })
+
+  const bookmarks = bookmarksResult?.items ?? []
+  const bookmarksTotal = bookmarksResult?.total ?? 0
+  const followed = followedResult?.items ?? []
+  const followedTotal = followedResult?.total ?? 0
+  const likedPosts = likedPostsResult?.items ?? []
+  const likedPostsTotal = likedPostsResult?.total ?? 0
+
+  const { data: profileOverview } = useQuery({
+    queryKey: ['profile-overview', user?.id],
+    queryFn: fetchProfileOverview,
+    enabled: !!user,
+  })
+
+  const { data: communitySocialCounts } = useQuery({
+    queryKey: ['profile-community-social-counts', user?.id],
+    queryFn: async () => {
+      const results = await Promise.all([
+        supabase.from('community_post_bookmarks').select('*', { count: 'exact', head: true }).eq('user_id', user!.id),
+        supabase.from('community_post_likes').select('*', { count: 'exact', head: true }).eq('user_id', user!.id),
+        supabase.from('community_user_relations').select('*', { count: 'exact', head: true }).eq('follower_id', user!.id).eq('relation_type', 'follow'),
+        supabase.from('community_tag_follows').select('*', { count: 'exact', head: true }).eq('user_id', user!.id),
+      ])
+      const failed = results.find(result => result.error)
+      if (failed?.error) throw failed.error
+      return {
+        bookmarks: results[0].count ?? 0,
+        likes: results[1].count ?? 0,
+        users: results[2].count ?? 0,
+        tags: results[3].count ?? 0,
+      }
     },
     enabled: !!user,
   })
 
-  const { data: likedPosts = [] } = useQuery({
-    queryKey: ['liked-posts', user?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('likes')
-        .select('post:posts(*, author:users!posts_author_id_fkey(username, avatar), series:series(name, slug))')
-        .eq('user_id', user!.id)
-        .order('created_at', { ascending: false })
-      if (error) throw error
-      return data?.map(item => item.post) ?? []
-    },
-    enabled: !!user,
-  })
+  const savedTotal = bookmarksTotal + (communitySocialCounts?.bookmarks ?? 0)
+  const followingTotal = followedTotal + (communitySocialCounts?.users ?? 0) + (communitySocialCounts?.tags ?? 0)
+  const favoritesTotal = likedPostsTotal + (communitySocialCounts?.likes ?? 0)
+  const readTotal = Math.max(profileOverview?.articles_read ?? 0, recentReads.length)
+  const activeTabLoading = activeTab === 'bookmarks' ? bookmarksLoading : activeTab === 'likes' ? likedPostsLoading : followedLoading
+  const activeTabFetching = activeTab === 'bookmarks' ? bookmarksFetching : activeTab === 'likes' ? likedPostsFetching : followedFetching
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -116,7 +212,7 @@ export default function ProfilePage() {
   )
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
       {/* Profile Header */}
       <div className="card p-8 mb-8">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
@@ -176,26 +272,72 @@ export default function ProfilePage() {
 
         <div className="flex items-center gap-6 mt-6 pt-6 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
           <div className="text-center">
-            <p className="text-xl font-bold">{bookmarks.length}</p>
+            <p className="text-xl font-bold">{savedTotal}</p>
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Đã lưu</p>
           </div>
           <div className="text-center">
-            <p className="text-xl font-bold">{followed.length}</p>
+            <p className="text-xl font-bold">{followingTotal}</p>
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Đang theo dõi</p>
           </div>
           <div className="text-center">
-            <p className="text-xl font-bold">{likedPosts.length}</p>
+            <p className="text-xl font-bold">{favoritesTotal}</p>
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Yêu thích</p>
+          </div>
+          <div className="text-center">
+            <p className="text-xl font-bold">{readTotal}</p>
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Đã đọc</p>
           </div>
         </div>
       </div>
 
+      <nav className="profile-hub-nav" aria-label="Điều hướng hồ sơ">
+        {([
+          { id: 'overview', label: 'Tổng quan', icon: LayoutDashboard },
+          { id: 'library', label: 'Thư viện', icon: Library },
+          { id: 'following', label: 'Đang theo dõi', icon: Users },
+          { id: 'settings', label: 'Cài đặt', icon: Settings },
+        ] as const).map(item => {
+          const Icon = item.icon
+          return <button key={item.id} type="button" className={profileSection === item.id ? 'active' : ''} onClick={() => setProfileSection(item.id)}><Icon size={16} />{item.label}</button>
+        })}
+      </nav>
+
+      {profileSection === 'overview' && <ProfileOverviewSection userId={user.id} />}
+
+      {profileSection === 'library' && <>
+      <section className="profile-reading-section mb-8" aria-labelledby="profile-reading-heading">
+        <div className="flex items-end justify-between gap-4 mb-4">
+          <div>
+            <p className="eyebrow"><Clock3 size={14} /> Dấu chân đọc</p>
+            <h2 id="profile-reading-heading" className="section-heading mb-1">Những câu chuyện bạn vừa mở.</h2>
+          </div>
+          <Link to="/search" className="btn-ghost hidden sm:inline-flex">Khám phá thêm <ArrowRight size={14} /></Link>
+        </div>
+        {recentReads.length > 0 ? (
+          <div className="profile-reading-grid">
+            {recentReads.slice(0, 4).map(item => (
+              <Link key={item.id} to={`/posts/${item.slug}`} className="profile-reading-item group">
+                {item.cover_image ? <img src={cloudinaryResponsiveImageUrl(item.cover_image, 480)} alt={item.title} loading="lazy" decoding="async" /> : <div className="profile-reading-placeholder">FS</div>}
+                <div className="profile-reading-copy">
+                  <h3 className="line-clamp-2 group-hover:text-[var(--accent)] transition-colors">{item.title}</h3>
+                  <span><Eye size={12} /> Đã mở {formatRelativeDate(item.visited_at)}</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="profile-reading-empty"><Sparkles size={18} /><span>Bạn chưa mở bài viết nào gần đây.</span><Link to="/search">Tìm một câu chuyện <ArrowRight size={13} /></Link></div>
+        )}
+      </section>
+
+      <ProfileCollectionsSection userId={user.id} bookmarks={bookmarks as PostWithDetails[]} />
+
       {/* Tabs */}
-      <div className="flex flex-wrap gap-2 mb-6">
+      <div className="flex flex-wrap gap-2 mt-10 mb-6">
         {(['bookmarks', 'likes', 'follows'] as const).map(tab => (
           <button
             key={tab}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => { setActiveTab(tab); setCollectionPage(1) }}
             className={`text-sm px-5 py-2.5 rounded-xl font-medium transition-all ${
               activeTab === tab ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' : 'btn-ghost'
             }`}
@@ -211,39 +353,52 @@ export default function ProfilePage() {
 
       {/* Content */}
       {activeTab === 'bookmarks' && (
-        bookmarks.length === 0 ? (
+        activeTabLoading ? (
+          <div className="profile-post-grid">{[1, 2, 3, 4, 5, 6].map(item => <PostCardSkeleton key={item} />)}</div>
+        ) : bookmarks.length === 0 ? (
           <div className="text-center py-16" style={{ color: 'var(--text-muted)' }}>
             <p className="text-4xl mb-3">🔖</p>
             <p>Chưa có bài viết đã lưu. Hãy lưu lại để đọc sau.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <>
+          <div className="profile-post-grid">
             {(bookmarks as unknown as Array<PostWithDetails | null>).map(post => post && <PostCard key={post.id} post={post} />)}
           </div>
+          <ProfilePagination page={collectionPage} total={bookmarksTotal} loading={activeTabFetching} onChange={setCollectionPage} />
+          </>
         )
       )}
 
       {activeTab === 'likes' && (
-        likedPosts.length === 0 ? (
+        activeTabLoading ? (
+          <div className="profile-post-grid">{[1, 2, 3, 4, 5, 6].map(item => <PostCardSkeleton key={item} />)}</div>
+        ) : likedPosts.length === 0 ? (
           <div className="text-center py-16" style={{ color: 'var(--text-muted)' }}>
             <Heart size={36} className="mx-auto mb-3" />
             <p>Bạn chưa yêu thích bài viết nào.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <>
+          <div className="profile-post-grid">
             {(likedPosts as unknown as Array<PostWithDetails | null>).map(post => post && <PostCard key={post.id} post={post} />)}
           </div>
+          <ProfilePagination page={collectionPage} total={likedPostsTotal} loading={activeTabFetching} onChange={setCollectionPage} />
+          </>
         )
       )}
 
       {activeTab === 'follows' && (
-        followed.length === 0 ? (
+        activeTabLoading ? (
+          <div className="profile-post-grid">{[1, 2, 3, 4, 5, 6].map(item => <div key={item} className="card p-5 h-24 skeleton" />)}</div>
+        ) : followed.length === 0 ? (
           <div className="text-center py-16" style={{ color: 'var(--text-muted)' }}>
             <p className="text-4xl mb-3">📚</p>
             <p>Bạn chưa theo dõi chuyên đề nào.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <>
+          <div className="profile-post-grid">
             {(followed as unknown as Array<SeriesRow | null>).map(series => series && (
               <Link key={series.id} to={`/series/${series.slug}`}
                 className="card p-5 flex items-center gap-4 hover:border-blue-500/30">
@@ -255,8 +410,14 @@ export default function ProfilePage() {
               </Link>
             ))}
           </div>
+          <ProfilePagination page={collectionPage} total={followedTotal} loading={activeTabFetching} onChange={setCollectionPage} />
+          </>
         )
       )}
+      </>}
+
+      {profileSection === 'following' && <ProfileFollowingSection userId={user.id} />}
+      {profileSection === 'settings' && <ProfileSettingsSection userId={user.id} />}
     </div>
   )
 }

@@ -69,8 +69,8 @@ export default function PostDetailPage() {
   })
 
   const { data: related = [] } = useQuery({
-    queryKey: ['related', post?.id],
-    queryFn: () => post ? fetchRelatedPosts(post.id, post.series_id).then(r => r.data ?? []) : [],
+    queryKey: ['related', post?.id, user?.id],
+    queryFn: () => post ? fetchRelatedPosts(post.id, post.series_id, 3, user?.id).then(r => r.data ?? []) : [],
     enabled: !!post?.id,
   })
 
@@ -122,6 +122,11 @@ export default function PostDetailPage() {
         queryClient.invalidateQueries({ queryKey: ['liked-posts', user?.id] }),
         queryClient.invalidateQueries({ queryKey: ['post', slug] }),
         queryClient.invalidateQueries({ queryKey: interactionKey }),
+        queryClient.invalidateQueries({ queryKey: ['posts'] }),
+        queryClient.invalidateQueries({ queryKey: ['search'] }),
+        queryClient.invalidateQueries({ queryKey: ['related'] }),
+        queryClient.invalidateQueries({ queryKey: ['posts', 'weekly-popular'] }),
+        queryClient.invalidateQueries({ queryKey: ['recommended-posts', user?.id] }),
       ])
       setLikeAdjustment(null)
     },
@@ -246,7 +251,7 @@ export default function PostDetailPage() {
           </div>
           <div className="flex items-center gap-4 text-sm" style={{ color: 'var(--text-muted)' }}>
             <span className="flex items-center gap-1"><Calendar size={13} /> {post.published_at ? formatDate(post.published_at) : formatDate(post.created_at)}</span>
-            <span className="flex items-center gap-1"><Clock size={13} /> {post.content ? readingTime(post.content) : '3 phút đọc'}</span>
+            <span className="flex items-center gap-1"><Clock size={13} /> {post.reading_time_minutes && post.reading_time_minutes > 0 ? `${post.reading_time_minutes} phút đọc` : readingTime(post.content ?? '')}</span>
             <span className="flex items-center gap-1"><Eye size={13} /> {formatNumber(post.view_count)} lượt xem</span>
           </div>
         </div>

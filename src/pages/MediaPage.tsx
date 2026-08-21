@@ -6,11 +6,13 @@ import { fetchPosts } from '@/services/api'
 import type { PostWithDetails } from '@/types/database'
 import YouTubeVideo from '@/components/YouTubeVideo'
 import { cloudinaryImageSrcSet, cloudinaryResponsiveImageUrl } from '@/lib/cloudinary'
+import { useAuth } from '@/hooks/useAuth'
 
 export default function MediaPage() {
+  const { user } = useAuth()
   const { data, isLoading } = useQuery({
-    queryKey: ['posts', 'media'],
-    queryFn: () => fetchPosts({ limit: 8 }),
+    queryKey: ['posts', 'media', user?.id],
+    queryFn: () => fetchPosts({ limit: 8, viewerId: user?.id }),
   })
   const posts = (data?.data ?? []) as unknown as PostWithDetails[]
 

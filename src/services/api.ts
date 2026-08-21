@@ -107,6 +107,22 @@ function normalizePostMetrics<T extends object>(posts: T[] | null) {
   })
 }
 
+async function fetchViewerLikedPostIds(viewerId: string | undefined, postIds: string[]) {
+  if (!viewerId || postIds.length === 0) return new Set<string>()
+  const { data, error } = await supabase
+    .from('likes')
+    .select('post_id')
+    .eq('user_id', viewerId)
+    .in('post_id', postIds)
+  if (error) return new Set<string>()
+  return new Set((data ?? []).map(row => row.post_id))
+}
+
+async function attachViewerLikeState<T extends { id: string }>(posts: T[], viewerId?: string) {
+  const likedIds = await fetchViewerLikedPostIds(viewerId, posts.map(post => post.id))
+  return posts.map(post => ({ ...post, is_liked: likedIds.has(post.id) }))
+}
+
 export async function fetchPosts({
   page = 1,
   limit = 10,
@@ -119,6 +135,7 @@ export async function fetchPosts({
   playerId,
   seasonId,
   sort = 'newest',
+  viewerId,
 }: {
   page?: number
   limit?: number
@@ -131,12 +148,13 @@ export async function fetchPosts({
   playerId?: string
   seasonId?: string
   sort?: 'newest' | 'oldest' | 'popular'
+  viewerId?: string
 }) {
   let query = supabase
     .from('posts')
     .select(`
       id, title, slug, excerpt, cover_image, author_id, series_id, status, view_count, featured,
-      image_alt, published_at, created_at, updated_at,
+      image_alt, reading_time_minutes, published_at, created_at, updated_at,
       author:users!posts_author_id_fkey(id, username, avatar),
       series:series(id, name, slug),
       likes(count),
@@ -155,7 +173,8 @@ export async function fetchPosts({
   if (seasonId) query = query.eq('season_id', seasonId)
 
   const result = await query
-  return { ...result, data: normalizePostMetrics(result.data ?? []) }
+  const normalized = normalizePostMetrics(result.data ?? [])
+  return { ...result, data: await attachViewerLikeState(normalized, viewerId) }
 }
 
 export async function recordUserActivity(
@@ -177,7 +196,9 @@ export async function recordUserActivity(
 
 export async function fetchRecommendedPosts(userId: string, limit = 12) {
   const { data, error } = await supabase.rpc('recommended_posts', { p_user_id: userId, p_limit: limit })
-  return { data: (data ?? []) as RecommendedPostRow[], error }
+  const rows = (data ?? []) as RecommendedPostRow[]
+  const likedIds = await fetchViewerLikedPostIds(userId, rows.map(row => row.post_id))
+  return { data: rows.map(row => ({ ...row, is_liked: likedIds.has(row.post_id) })), error }
 }
 
 export async function fetchAdminDashboardMetrics(days = 30) {
@@ -232,17 +253,18 @@ export async function fetchPostBySlug(slug: string, incrementView = true) {
   return { data, error }
 }
 
-export async function fetchRelatedPosts(postId: string, seriesId: string | null, limit = 3) {
+export async function fetchRelatedPosts(postId: string, seriesId: string | null, limit = 3, viewerId?: string) {
   let query = supabase
     .from('posts')
-    .select('id, title, slug, cover_image, excerpt, published_at, view_count, created_at, updated_at, status, featured, author_id, series_id, likes(count), comments(count), series:series(id, name, slug)')
+    .select('id, title, slug, cover_image, excerpt, published_at, reading_time_minutes, view_count, created_at, updated_at, status, featured, author_id, series_id, likes(count), comments(count), series:series(id, name, slug)')
     .eq('status', 'published')
     .neq('id', postId)
     .limit(limit)
 
   if (seriesId) query = query.eq('series_id', seriesId)
   const result = await query
-  return { ...result, data: normalizePostMetrics(result.data ?? []) }
+  const normalized = normalizePostMetrics(result.data ?? [])
+  return { ...result, data: await attachViewerLikeState(normalized, viewerId) }
 }
 
 export async function createPost(post: {
@@ -528,7 +550,7 @@ export async function fetchTaxonomies() {
   }
 }
 
-export async function fetchWeeklyPopularPosts(limit = 20) {
+export async function fetchWeeklyPopularPosts(limit = 20, viewerId?: string) {
   const { data: ranking, error } = await supabase.rpc('weekly_popular_posts', { p_limit: limit })
   if (error || !ranking?.length) return { data: [], error }
   const rankedRows = ranking as { post_id: string; weekly_views: number }[]
@@ -538,10 +560,11 @@ export async function fetchWeeklyPopularPosts(limit = 20) {
     .select('*, author:users!posts_author_id_fkey(id, username, avatar), series:series(id, name, slug), likes(count), comments(count)')
     .in('id', ids)
   const byId = new Map(normalizePostMetrics(posts ?? []).map(post => [post.id, post]))
+  const likedIds = await fetchViewerLikedPostIds(viewerId, ids)
   return {
     data: rankedRows.flatMap(item => {
       const post = byId.get(item.post_id)
-      return post ? [{ ...post, weekly_views: item.weekly_views }] : []
+      return post ? [{ ...post, weekly_views: item.weekly_views, is_liked: likedIds.has(post.id) }] : []
     }),
     error: postsError,
   }

@@ -35,6 +35,7 @@ export interface PostRow {
   series_id: string | null
   status: 'draft' | 'published' | 'scheduled'
   view_count: number
+  reading_time_minutes: number
   featured: boolean
   meta_title: string | null
   meta_desc: string | null
@@ -132,6 +133,39 @@ export interface UserActivityEventRow {
   created_at: string
 }
 
+export interface ProfilePreferenceRow {
+  user_id: string
+  profile_visibility: 'public' | 'members' | 'private'
+  show_activity: boolean
+  show_reading_stats: boolean
+  email_notifications: boolean
+  push_notifications: boolean
+  notify_mentions: boolean
+  notify_replies: boolean
+  notify_follows: boolean
+  notify_new_content: boolean
+  updated_at: string
+}
+
+export interface ReadingCollectionRow {
+  id: string
+  user_id: string
+  name: string
+  description: string | null
+  color: 'lime' | 'blue' | 'orange' | 'violet'
+  created_at: string
+  updated_at: string
+}
+
+export interface MemberBadgeRow {
+  id: string
+  slug: string
+  name: string
+  description: string
+  icon: string
+  created_at: string
+}
+
 export interface RecommendedPostRow {
   post_id: string
   title: string
@@ -143,6 +177,7 @@ export interface RecommendedPostRow {
   series_slug: string | null
   published_at: string
   score: number
+  is_liked?: boolean
 }
 
 export interface PostShareRow {
@@ -443,6 +478,31 @@ export interface Database {
         Insert: Partial<UserActivityEventRow>
         Update: Partial<UserActivityEventRow>
       }
+      profile_preferences: {
+        Row: ProfilePreferenceRow
+        Insert: Partial<ProfilePreferenceRow> & { user_id: string }
+        Update: Partial<ProfilePreferenceRow>
+      }
+      reading_collections: {
+        Row: ReadingCollectionRow
+        Insert: Partial<ReadingCollectionRow> & { user_id: string; name: string }
+        Update: Partial<ReadingCollectionRow>
+      }
+      reading_collection_items: {
+        Row: { collection_id: string; post_id: string; added_at: string }
+        Insert: { collection_id: string; post_id: string }
+        Update: never
+      }
+      member_badges: {
+        Row: MemberBadgeRow
+        Insert: Partial<MemberBadgeRow> & { slug: string; name: string; description: string; icon: string }
+        Update: Partial<MemberBadgeRow>
+      }
+      user_badges: {
+        Row: { user_id: string; badge_id: string; awarded_at: string; metadata: Json }
+        Insert: { user_id: string; badge_id: string; metadata?: Json }
+        Update: never
+      }
       reports: {
         Row: ReportRow
         Insert: Partial<ReportRow>
@@ -592,6 +652,9 @@ export interface Database {
       moderate_comment_record: { Args: { p_comment_type: string; p_comment_id: string; p_action: string }; Returns: boolean }
       admin_comment_feed: { Args: { p_limit?: number; p_offset?: number; p_status?: string | null; p_comment_type?: string | null; p_search?: string | null; p_sort?: string }; Returns: AdminModerationCommentRow[] }
       admin_audit_summary: { Args: { p_days?: number }; Returns: Json }
+      profile_overview: { Args: Record<string, never>; Returns: Json }
+      profile_activity_feed: { Args: { p_limit?: number; p_offset?: number }; Returns: Array<{ id: string; event_type: string; target_type: string | null; target_id: string | null; target_title: string; target_slug: string | null; context_text: string | null; reply_to_name: string | null; reaction: string | null; comment_id: string | null; metadata: Json; created_at: string; total_count: number }> }
+      refresh_my_profile_badges: { Args: Record<string, never>; Returns: number }
     }
     Enums: Record<string, never>
   }

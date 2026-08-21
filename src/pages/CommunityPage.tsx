@@ -603,7 +603,7 @@ function CommunityComments({ postId, poll }: { postId: string; poll?: NonNullabl
             <button type="button" className={identityPickerOpen ? 'is-active' : ''} onClick={() => setIdentityPickerOpen(value => !value)} aria-label="Chọn tên hiển thị" aria-expanded={identityPickerOpen}><UserRoundCog size={12} /></button>
           </div>
           <div className="community-comment-form-fields">
-            {replyTo && <div className="community-comment-replying"><Reply size={13} /> Đang trả lời <strong>{replyTo.name}</strong><button type="button" className="btn-ghost p-1" onClick={() => setReplyTo(null)} aria-label="Hủy trả lời"><X size={13} /></button></div>}
+            {replyTo && <div className="community-comment-replying"><Reply size={13} /> Đang trả lời <strong>{replyTo.name}</strong><button type="button" className="btn-ghost p-1 inline-flex items-center gap-1 text-xs" onClick={() => { setReplyTo(null); inputRef.current?.focus() }} aria-label="Bỏ người đang trả lời" title="Bỏ người đang trả lời"><X size={13} /> Bỏ trả lời</button></div>}
             <input className="community-comment-honeypot" value={honeypot} onChange={event => setHoneypot(event.target.value)} tabIndex={-1} autoComplete="off" aria-hidden="true" />
             <div className="community-comment-input-row">
               <input ref={inputRef} className="input" value={content} onChange={event => setContent(event.target.value)} placeholder={replyTo ? `Trả lời ${replyTo.name}...` : 'Viết bình luận...'} maxLength={1000} />
@@ -635,6 +635,7 @@ function CommunityComments({ postId, poll }: { postId: string; poll?: NonNullabl
 function CommunityCommentItem({ postId, comment, currentUser, voteByUserId, reactionCountsByComment, reactionByComment, onReact, onReply, depth = 0 }: { postId: string; comment: CommunityCommentWithUser; currentUser: ReturnType<typeof useAuth>['user']; voteByUserId: Map<string, string | undefined>; reactionCountsByComment: Map<string, CommunityReactionSummary[]>; reactionByComment: Map<string, CommunityReactionType>; onReact: (commentId: string, reaction: CommunityReactionType | null) => void; onReply: (target: CommunityReplyTarget) => void; depth?: number }) {
   const identity = getCommunityCommentIdentity(comment)
   const voteLabel = voteByUserId.get(comment.user_id)
+  const reactionCounts = reactionCountsByComment.get(comment.id) ?? []
   return <div className={`community-comment comment-virtual-item ${depth > 0 ? 'is-reply' : ''}`}>
     <Avatar username={identity.name} avatar={identity.mode === 'account' ? comment.user?.avatar : null} />
     <div>
@@ -643,7 +644,14 @@ function CommunityCommentItem({ postId, comment, currentUser, voteByUserId, reac
       <p>{comment.reply_to_name && <strong className="comment-reply-mention">@{comment.reply_to_name} </strong>}{comment.content}</p>
       {comment.image_url && comment.image_status !== 'hidden' && <img src={cloudinaryResponsiveImageUrl(comment.image_url, 720)} srcSet={cloudinaryImageSrcSet(comment.image_url, [320, 480, 720, 960])} sizes="(max-width: 640px) 88vw, 640px" alt="Ảnh đính kèm bình luận" className="community-comment-image" loading="lazy" decoding="async" />}
       {comment.image_url && comment.image_status === 'hidden' && <small className="community-comment-image-hidden"><ShieldCheck size={12} /> Ảnh đã được đội ngũ kiểm duyệt ẩn.</small>}
-      <div className="community-comment-meta"><CommunityReactionPicker currentReaction={reactionByComment.get(comment.id) ?? null} counts={reactionCountsByComment.get(comment.id) ?? []} onSelect={reaction => onReact(comment.id, reaction)} /><small>{formatRelativeDate(comment.created_at)}</small>{currentUser && <button type="button" className="btn-ghost p-1" onClick={() => onReply({ parentId: comment.parent_comment_id ?? comment.id, commentId: comment.id, userId: comment.user_id, name: identity.name })}><Reply size={12} /> Trả lời</button>}</div>
+      <div className="community-comment-meta">
+        <div className="community-comment-action-controls">
+          <CommunityReactionPicker currentReaction={reactionByComment.get(comment.id) ?? null} counts={reactionCounts} onSelect={reaction => onReact(comment.id, reaction)} showSummary={false} />
+          <small>{formatRelativeDate(comment.created_at)}</small>
+          {currentUser && <button type="button" className="btn-ghost p-1" onClick={() => onReply({ parentId: comment.parent_comment_id ?? comment.id, commentId: comment.id, userId: comment.user_id, name: identity.name })}><Reply size={12} /> Trả lời</button>}
+        </div>
+        <CommunityReactionSummary counts={reactionCounts} />
+      </div>
       {depth === 0 && (comment.reply_count ?? 0) > 0 && <CommunityCommentReplies postId={postId} parentId={comment.id} replyCount={comment.reply_count ?? 0} currentUser={currentUser} voteByUserId={voteByUserId} onReact={onReact} onReply={onReply} />}
     </div>
   </div>
@@ -1019,15 +1027,24 @@ function CommunityReactionSummary({ counts }: { counts: CommunityReactionSummary
 
 function CommunityReactionPicker({ currentReaction, counts, onSelect, showSummary = true }: { currentReaction: CommunityReactionType | null; counts: CommunityReactionSummary[]; onSelect: (reaction: CommunityReactionType | null) => void; showSummary?: boolean }) {
   const [open, setOpen] = useState(false)
+  const [hoverLocked, setHoverLocked] = useState(false)
   const selected = communityReactionMeta(currentReaction)
+  const closeAfterClick = () => {
+    setOpen(false)
+    setHoverLocked(true)
+  }
+  const handleTriggerClick = () => {
+    closeAfterClick()
+    onSelect(currentReaction ? null : 'like')
+  }
 
-  return <div className="community-reaction-picker">
-    <button type="button" className={`community-reaction-trigger ${currentReaction ? 'is-selected' : ''}`} onClick={() => setOpen(value => !value)} aria-haspopup="menu" aria-expanded={open} aria-label={selected ? `Cảm xúc hiện tại: ${selected.label}. Đổi cảm xúc` : 'Chọn cảm xúc'}>
+  return <div className={`community-reaction-picker ${hoverLocked ? 'is-click-closed' : ''}`} onMouseEnter={() => { if (!hoverLocked) setOpen(true) }} onFocus={() => { if (!hoverLocked) setOpen(true) }} onMouseLeave={() => { setOpen(false); setHoverLocked(false) }}>
+    <button type="button" className={`community-reaction-trigger ${currentReaction ? 'is-selected' : ''}`} onPointerDown={closeAfterClick} onClick={handleTriggerClick} aria-haspopup="menu" aria-expanded={open} aria-label={selected ? `Cảm xúc hiện tại: ${selected.label}. Nhấn để hủy` : 'Nhấn để thích. Di chuột để chọn cảm xúc khác'}>
       {selected ? <span className="community-reaction-selected-icon" aria-hidden="true">{selected.emoji}</span> : <Heart size={17} strokeWidth={1.8} aria-hidden="true" />}
     </button>
     {showSummary && <CommunityReactionSummary counts={counts} />}
     <div className={`community-reaction-menu ${open ? 'is-open' : ''}`} role="menu" aria-label="Chọn cảm xúc">
-      {communityReactionOptions.map(option => <button key={option.value} type="button" role="menuitem" aria-label={option.label} className={currentReaction === option.value ? 'is-selected' : ''} onClick={() => { onSelect(currentReaction === option.value ? null : option.value); setOpen(false) }} title={option.label}>
+      {communityReactionOptions.map(option => <button key={option.value} type="button" role="menuitem" aria-label={option.label} className={currentReaction === option.value ? 'is-selected' : ''} onClick={event => { event.currentTarget.blur(); closeAfterClick(); onSelect(currentReaction === option.value ? null : option.value) }} title={option.label}>
         <span aria-hidden="true">{option.emoji}</span>
       </button>)}
     </div>

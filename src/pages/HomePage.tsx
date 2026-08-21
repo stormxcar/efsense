@@ -18,12 +18,12 @@ export default function HomePage() {
   const { user } = useAuth()
   const [page, setPage] = useState(1)
   const { data: featuredPosts = [], isLoading: loadingFeatured } = useQuery({
-    queryKey: ['posts', 'featured'],
-    queryFn: () => fetchPosts({ featured: true, limit: 3 }).then(r => (r.data ?? []) as unknown as PostWithDetails[]),
+    queryKey: ['posts', 'featured', user?.id],
+    queryFn: () => fetchPosts({ featured: true, limit: 3, viewerId: user?.id }).then(r => (r.data ?? []) as unknown as PostWithDetails[]),
   })
   const { data: latestData, isLoading: loadingLatest } = useQuery({
-    queryKey: ['posts', 'latest', page],
-    queryFn: () => fetchPosts({ page, limit: 6 }),
+    queryKey: ['posts', 'latest', page, user?.id],
+    queryFn: () => fetchPosts({ page, limit: 6, viewerId: user?.id }),
     placeholderData: previous => previous,
   })
   const latestPosts = latestData?.data ?? []
@@ -37,8 +37,8 @@ export default function HomePage() {
     queryFn: () => fetchTags().then(r => r.data ?? []),
   })
   const { data: popularPosts = [] } = useQuery({
-    queryKey: ['posts', 'popular'],
-    queryFn: () => fetchPosts({ limit: 5, sort: 'popular' }).then(r => (r.data ?? []) as unknown as PostWithDetails[]),
+    queryKey: ['posts', 'popular', user?.id],
+    queryFn: () => fetchPosts({ limit: 5, sort: 'popular', viewerId: user?.id }).then(r => (r.data ?? []) as unknown as PostWithDetails[]),
   })
   const { data: recommended = [], isLoading: loadingRecommended } = useQuery({
     queryKey: ['recommended-posts', user?.id],
@@ -73,6 +73,7 @@ export default function HomePage() {
     created_at: item.published_at,
     updated_at: item.published_at,
     published_at: item.published_at,
+    is_liked: item.is_liked,
   })) as unknown as PostWithDetails[]
 
   return (

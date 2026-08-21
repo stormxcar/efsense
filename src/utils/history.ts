@@ -47,4 +47,5 @@ export function saveReadingHistory(item: Omit<ReadingHistoryItem, 'visited_at'>)
     ...getReadingHistory().filter(entry => entry.id !== item.id),
   ].slice(0, 8)
   localStorage.setItem(READING_KEY, JSON.stringify(next))
+  window.dispatchEvent(new CustomEvent('football-stories:reading-history-changed'))
 }

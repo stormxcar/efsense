@@ -47,8 +47,10 @@ export function formatNumber(n: number): string {
 }
 
 export function readingTime(content: string): string {
-  const words = content.trim().split(/\s+/).length
-  const minutes = Math.ceil(words / 200)
+  const plainText = content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+  if (!plainText) return '1 phút đọc'
+  const words = plainText.split(/\s+/).length
+  const minutes = Math.max(1, Math.ceil(words / 180))
   return `${minutes} phút đọc`
 }
 

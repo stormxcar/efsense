@@ -1,9 +1,10 @@
-import { type PointerEvent } from 'react'
+import { type PointerEvent, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Clock, Eye, MessageCircle, Heart, Flame, Sparkles } from 'lucide-react'
+import { Clock, Eye, MessageCircle, Heart, Flame, Sparkles, CheckCheck } from 'lucide-react'
 import type { PostWithDetails } from '@/types/database'
 import { formatDate, readingTime, cn, SERIES_COLORS, SERIES_ICONS, formatNumber } from '@/utils'
+import { getReadingHistory } from '@/utils/history'
 import { fetchPostBySlug } from '@/services/api'
 import Tooltip from './Tooltip'
 import { cloudinaryImageSrcSet, cloudinaryResponsiveImageUrl } from '@/lib/cloudinary'
@@ -25,6 +26,11 @@ function isHot(post: PostWithDetails): boolean {
   return (post.likes_count ?? 0) >= 20 || post.view_count >= 500
 }
 
+function postReadingTime(post: PostWithDetails): string {
+  if (post.reading_time_minutes && post.reading_time_minutes > 0) return `${post.reading_time_minutes} phút đọc`
+  return readingTime(post.content ?? post.excerpt ?? '')
+}
+
 function moveSpotlight(event: PointerEvent<HTMLAnchorElement>) {
   if (event.pointerType === 'touch' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
   const rect = event.currentTarget.getBoundingClientRect()
@@ -39,9 +45,18 @@ function resetSpotlight(event: PointerEvent<HTMLAnchorElement>) {
 
 export default function PostCard({ post, variant = 'default' }: Props) {
   const queryClient = useQueryClient()
+  const [isRead, setIsRead] = useState(() => getReadingHistory().some(item => item.id === post.id || item.slug === post.slug))
+  const isLiked = Boolean(post.is_liked)
   const seriesSlug = post.series?.slug ?? ''
   const badgeClass = SERIES_COLORS[seriesSlug] ?? 'badge-blue'
   const seriesIcon = SERIES_ICONS[seriesSlug] ?? ''
+
+  useEffect(() => {
+    const syncReadState = () => setIsRead(getReadingHistory().some(item => item.id === post.id || item.slug === post.slug))
+    window.addEventListener('football-stories:reading-history-changed', syncReadState)
+    syncReadState()
+    return () => window.removeEventListener('football-stories:reading-history-changed', syncReadState)
+  }, [post.id, post.slug])
   const prefetchPost = () => {
     void queryClient.prefetchQuery({
       queryKey: ['post', post.slug],
@@ -61,7 +76,7 @@ export default function PostCard({ post, variant = 'default' }: Props) {
 
   if (variant === 'compact') {
     return (
-      <Link to={`/posts/${post.slug}`} {...intentProps} className="flex items-start gap-3 p-3 rounded-lg transition-all group hover:bg-[var(--bg-hover)]">
+      <Link to={`/posts/${post.slug}`} {...intentProps} className={cn('flex items-start gap-3 p-3 rounded-lg transition-all group hover:bg-[var(--bg-hover)]', isRead && 'post-card-is-read')}>
         {post.cover_image && (
           <div className="relative shrink-0">
             <img
@@ -79,7 +94,7 @@ export default function PostCard({ post, variant = 'default' }: Props) {
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold line-clamp-2 group-hover:text-[var(--accent)] transition-colors">
+          <p className={cn('text-sm font-semibold line-clamp-2 group-hover:text-[var(--accent)] transition-colors', isRead && 'post-card-title-read')} aria-label={isRead ? 'Bài viết đã đọc' : undefined}>
             {post.title}
           </p>
           <div className="flex items-center gap-2 mt-1">
@@ -89,6 +104,11 @@ export default function PostCard({ post, variant = 'default' }: Props) {
             <span className="flex items-center gap-0.5 text-xs" style={{ color: 'var(--text-muted)' }}>
               <Eye size={10} /> {formatNumber(post.view_count)}
             </span>
+            <span className={cn('post-card-liked-state flex items-center gap-0.5 text-xs', isLiked && 'is-liked')} title={isLiked ? 'Bạn đã thích bài viết này' : 'Lượt thích bài viết'}>
+              <Heart size={10} fill={isLiked ? 'currentColor' : 'none'} />
+              {isLiked && <span className="sr-only">Bạn đã thích</span>}
+            </span>
+            {isRead && <span className="post-card-read-state" title="Bạn đã đọc bài viết"><CheckCheck size={11} /></span>}
           </div>
         </div>
       </Link>
@@ -97,7 +117,7 @@ export default function PostCard({ post, variant = 'default' }: Props) {
 
   if (variant === 'featured') {
     return (
-      <Link to={`/posts/${post.slug}`} {...intentProps} onPointerMove={moveSpotlight} onPointerLeave={resetSpotlight} className="card spotlight-card post-card-featured group overflow-hidden relative grid md:grid-cols-[1.25fr_.75fr] min-h-80">
+      <Link to={`/posts/${post.slug}`} {...intentProps} onPointerMove={moveSpotlight} onPointerLeave={resetSpotlight} className={cn('card spotlight-card post-card-featured group overflow-hidden relative grid md:grid-cols-[1.25fr_.75fr] min-h-80', isRead && 'post-card-is-read')}>
         <div className="overflow-hidden relative">
           {post.cover_image ? (
             <img
@@ -125,7 +145,7 @@ export default function PostCard({ post, variant = 'default' }: Props) {
             </span>
           )}
           <div>
-            <h2 className="post-card-featured-title text-3xl md:text-4xl font-extrabold uppercase leading-[.95] tracking-tight mb-4 group-hover:text-[var(--accent)] transition-colors line-clamp-3" style={{ fontFamily: 'var(--font-family-display)' }}>
+            <h2 className={cn('post-card-featured-title text-3xl md:text-4xl font-extrabold uppercase leading-[.95] tracking-tight mb-4 group-hover:text-[var(--accent)] transition-colors line-clamp-3', isRead && 'post-card-title-read')} style={{ fontFamily: 'var(--font-family-display)' }} aria-label={isRead ? 'Bài viết đã đọc' : undefined}>
               {post.title}
             </h2>
             {post.excerpt && (
@@ -150,13 +170,13 @@ export default function PostCard({ post, variant = 'default' }: Props) {
                 <span className="flex items-center gap-1"><Eye size={12} /> {formatNumber(post.view_count)}</span>
               </Tooltip>
               <Tooltip content={`${formatNumber(post.likes_count ?? 0)} lượt thích`} placement="top">
-                <span className="flex items-center gap-1"><Heart size={12} /> {formatNumber(post.likes_count ?? 0)}</span>
+                <span className={cn('flex items-center gap-1', isLiked && 'post-card-liked-state is-liked')} title={isLiked ? 'Bạn đã thích bài viết này' : undefined}><Heart size={12} fill={isLiked ? 'currentColor' : 'none'} /> {formatNumber(post.likes_count ?? 0)}</span>
               </Tooltip>
               <Tooltip content={`${post.comments_count ?? 0} bình luận`} placement="top">
                 <span className="flex items-center gap-1"><MessageCircle size={12} /> {post.comments_count ?? 0}</span>
               </Tooltip>
-              <Tooltip content={post.content || post.excerpt ? readingTime(post.content ?? post.excerpt ?? '') : '3 phút đọc'} placement="top">
-                <span className="hidden md:flex items-center gap-1"><Clock size={12} /> {post.content || post.excerpt ? readingTime(post.content ?? post.excerpt ?? '') : '3 phút đọc'}</span>
+              <Tooltip content={postReadingTime(post)} placement="top">
+                <span className="hidden md:flex items-center gap-1"><Clock size={12} /> {postReadingTime(post)}</span>
               </Tooltip>
             </div>
           </div>
@@ -169,7 +189,7 @@ export default function PostCard({ post, variant = 'default' }: Props) {
   const fresh = isNew(post)
 
   return (
-    <Link to={`/posts/${post.slug}`} {...intentProps} onPointerMove={moveSpotlight} onPointerLeave={resetSpotlight} className="card spotlight-card group overflow-hidden flex flex-col">
+    <Link to={`/posts/${post.slug}`} {...intentProps} onPointerMove={moveSpotlight} onPointerLeave={resetSpotlight} className={cn('card spotlight-card group overflow-hidden flex flex-col', isRead && 'post-card-is-read')}>
       <div className="overflow-hidden relative">
         {post.cover_image ? (
           <img
@@ -204,7 +224,7 @@ export default function PostCard({ post, variant = 'default' }: Props) {
 
       <div className="p-5 flex flex-col flex-1">
         {post.series && <span className="text-[.68rem] font-extrabold uppercase tracking-[.12em] mb-3" style={{ color: 'var(--accent)' }}>{post.series.name}</span>}
-        <h3 className="font-extrabold text-xl uppercase leading-[1.02] tracking-tight mb-3 group-hover:text-[var(--accent)] transition-colors line-clamp-2" style={{ fontFamily: 'var(--font-family-display)' }}>
+        <h3 className={cn('font-extrabold text-xl uppercase leading-[1.02] tracking-tight mb-3 group-hover:text-[var(--accent)] transition-colors line-clamp-2', isRead && 'post-card-title-read')} style={{ fontFamily: 'var(--font-family-display)' }} aria-label={isRead ? 'Bài viết đã đọc' : undefined}>
           {post.title}
         </h3>
         {post.excerpt && (
@@ -227,7 +247,7 @@ export default function PostCard({ post, variant = 'default' }: Props) {
           <div className="post-card-metrics flex items-center gap-2.5 text-xs shrink-0" style={{ color: 'var(--text-muted)' }}>
             <Tooltip content={`${formatNumber(post.likes_count ?? 0)} lượt thích`} placement="top">
               <span className="flex items-center gap-1 cursor-default">
-                <Heart size={11} /> {formatNumber(post.likes_count ?? 0)}
+                <Heart size={11} fill={isLiked ? 'currentColor' : 'none'} className={isLiked ? 'post-card-liked-state is-liked' : undefined} /> {formatNumber(post.likes_count ?? 0)}
               </span>
             </Tooltip>
             <Tooltip content={`${post.comments_count ?? 0} bình luận`} placement="top">
@@ -235,9 +255,9 @@ export default function PostCard({ post, variant = 'default' }: Props) {
                 <MessageCircle size={11} /> {post.comments_count ?? 0}
               </span>
             </Tooltip>
-            <Tooltip content={post.content || post.excerpt ? readingTime(post.content ?? post.excerpt ?? '') : '3 phút đọc'} placement="top">
+            <Tooltip content={postReadingTime(post)} placement="top">
               <span className="hidden sm:flex items-center gap-1 cursor-default">
-                <Clock size={11} /> {post.content || post.excerpt ? readingTime(post.content ?? post.excerpt ?? '') : '3 phút'}
+                <Clock size={11} /> {postReadingTime(post)}
               </span>
             </Tooltip>
           </div>

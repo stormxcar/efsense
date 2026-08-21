@@ -46,10 +46,10 @@ export default function Header() {
   const headerSearchHistory = useMemo(() => searchOpen ? getSearchHistory() : [], [searchOpen])
   const debouncedHeaderSearch = useDebounce(searchQuery.trim(), 350)
   const { data: globalSearch, isFetching: globalSearchLoading } = useQuery({
-    queryKey: ['header-global-search', debouncedHeaderSearch],
+    queryKey: ['header-global-search', debouncedHeaderSearch, user?.id],
     queryFn: async () => {
       const [postsResult, seriesResult] = await Promise.all([
-        fetchPosts({ search: debouncedHeaderSearch, limit: 4 }),
+        fetchPosts({ search: debouncedHeaderSearch, limit: 4, viewerId: user?.id }),
         fetchSeries('published'),
       ])
       const series = (seriesResult.data ?? []).filter(item => {

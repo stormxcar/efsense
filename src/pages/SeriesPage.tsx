@@ -25,8 +25,8 @@ export default function SeriesPage() {
   })
 
   const { data: postsData, isLoading: loadingPosts } = useQuery({
-    queryKey: ['posts', 'series', series?.id, page],
-    queryFn: () => series ? fetchPosts({ seriesId: series.id, page, limit: PAGE_SIZE }) : null,
+    queryKey: ['posts', 'series', series?.id, page, user?.id],
+    queryFn: () => series ? fetchPosts({ seriesId: series.id, page, limit: PAGE_SIZE, viewerId: user?.id }) : null,
     enabled: !!series?.id,
   })
 

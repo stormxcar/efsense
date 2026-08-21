@@ -207,8 +207,8 @@ export default function CommentSection({ postId, currentUser }: Props) {
             <div className="flex items-center gap-2 mb-3 p-2 rounded-lg text-sm" style={{ background: 'rgba(59,130,246,0.08)', color: '#60a5fa' }}>
               <Reply size={14} />
               <span>Đang trả lời <strong>@{replyTo.username}</strong></span>
-              <button type="button" onClick={() => setReplyTo(null)} className="ml-auto">
-                <X size={14} />
+              <button type="button" onClick={() => { setReplyTo(null); textareaRef.current?.focus() }} className="ml-auto inline-flex items-center gap-1 text-xs" title="Bỏ người đang trả lời">
+                <X size={14} /> Bỏ trả lời
               </button>
             </div>
           )}
@@ -228,7 +228,7 @@ export default function CommentSection({ postId, currentUser }: Props) {
                   ref={textareaRef}
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
-                  placeholder="Viết bình luận..."
+                  placeholder={replyTo ? `Trả lời @${replyTo.username}...` : 'Viết bình luận...'}
                   rows={2}
                   className="article-comment-input"
                   maxLength={1000}
